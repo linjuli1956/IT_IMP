@@ -1,88 +1,70 @@
-# Docker Compose 部署指南
+# Docker Compose 镜像部署
 
-本目录是 IT_IMP 的唯一 Docker 部署入口。用户只需要复制并修改一个 `.env` 文件，然后执行 `docker compose up`。
+这是正式部署方式：Compose 直接拉取 IT_IMP 已发布的镜像，不下载源码，也不在用户服务器上构建镜像。
 
-## 一键部署
+## 用户部署命令
 
 ```bash
-git clone https://github.com/linjuli1956/IT_IMP.git
-cd IT_IMP/deploy/docker
-cp .env.example .env
+mkdir -p /vol1/1000/docker/IT_IMP_docker
+cd /vol1/1000/docker/IT_IMP_docker
+
+curl -fsSLO https://raw.githubusercontent.com/linjuli1956/IT_IMP/main/deploy/docker/docker-compose.yml
+curl -fsSLo .env https://raw.githubusercontent.com/linjuli1956/IT_IMP/main/deploy/docker/.env.example
+
 nano .env
-docker compose up -d --build
+docker compose up -d
 ```
 
-查看状态与日志：
+`docker compose up -d` 会自动拉取：
 
-```bash
-docker compose ps
-docker compose logs -f web
-```
+- `ghcr.io/linjuli1956/it-imp-web:latest`：IT_IMP 应用镜像；
+- `mysql:8.0`：内置 MySQL 镜像。
 
-默认访问地址是 `http://服务器地址:3000`。
+## 首次只修改四项
 
-## 只需要修改 `.env`
-
-以下是最常用的配置。其余项目已有默认值，首次测试无需改动。
+`.env` 是唯一需要修改的文件：
 
 ```dotenv
-# 数据总目录。MySQL 使用 ${DATA_DIR}/mysql，上传文件使用 ${DATA_DIR}/app。
+# NAS/Linus 的数据总目录；可保留 ./data 使用当前 Compose 目录。
 DATA_DIR=/vol1/1000/docker/IT_IMP_docker/data
 
-# 网站端口；例如 7000 对应 http://服务器地址:7000
+# 对外网站端口；例如 7000 对应 http://服务器地址:7000
 WEB_PORT=7000
 
-# 平台显示名称和时区
-NUXT_PUBLIC_APP_NAME=综合管理平台
-TZ=Asia/Shanghai
-MYSQL_TIME_ZONE=+08:00
+# 替换为自己的值，不能使用示例值
+MYSQL_ROOT_PASSWORD=你的数据库强密码
+JWT_SECRET=你的长随机密钥
 
-# 必须替换为自己的强密码和随机 JWT 密钥
-MYSQL_ROOT_PASSWORD=请替换为数据库强密码
-JWT_SECRET=请替换为长随机字符串
-
-# 首次管理员，仅在空数据库首次启动时创建
-INITIAL_ADMIN_USERNAME=admin
-INITIAL_ADMIN_PASSWORD=请替换为首次管理员密码
+# 首次管理员；只在空数据库第一次启动时创建
+INITIAL_ADMIN_PASSWORD=你的首次管理员密码
 ```
 
-Docker 会自动创建以下目录；也可以提前创建：
+其余配置可以保持默认。Docker 会自动创建 `${DATA_DIR}/mysql` 和 `${DATA_DIR}/app`。
+
+## 数据与端口
+
+- `${DATA_DIR}/mysql`：内置 MySQL 的数据库文件；
+- `${DATA_DIR}/app`：上传的 PDF、XLSX、附件和日志；
+- Web 默认端口为 `3000`，改 `WEB_PORT` 即可；
+- MySQL 默认只监听服务器本机，不对公网开放；Web 通过内部 `db:3306` 连接数据库；
+- `TZ=Asia/Shanghai` 与 `MYSQL_TIME_ZONE=+08:00` 默认已配置。
+
+## 更新与运维
 
 ```bash
-mkdir -p /vol1/1000/docker/IT_IMP_docker/data/mysql
-mkdir -p /vol1/1000/docker/IT_IMP_docker/data/app
-```
+# 拉取最新镜像并重建容器，保留数据
+docker compose pull
+docker compose up -d
 
-## 数据保存方式
+# 查看日志
+docker compose logs -f web
 
-Compose 会启动独立的 MySQL 容器，并自动创建 `MYSQL_DATABASE` 指定的数据库。数据库文件必须持久化，否则删除容器后账号和业务数据会丢失。
-
-- `${DATA_DIR}/mysql`：MySQL 的库、表、账号和业务数据；
-- `${DATA_DIR}/app`：用户上传的 PDF、XLSX、附件和应用日志；
-- MySQL 仅保存文件路径和业务关联信息，不保存 PDF/XLSX 的二进制内容。
-
-默认 MySQL 只监听 `127.0.0.1`，不对公网开放。Web 容器始终通过 Docker 内部地址 `db:3306` 访问它；不要把 `DATABASE_PORT` 改为宿主机的 `MYSQL_PORT`。
-
-## 常用命令
-
-```bash
-# 更新代码并重新构建
-git pull
-docker compose up -d --build
-
-# 停止服务，但保留数据目录
+# 停止服务，保留数据库和上传文件
 docker compose down
-
-# 查看全部日志
-docker compose logs -f
 ```
 
-## 忘记管理员密码
-
-先修改 `.env` 中的 `INITIAL_ADMIN_PASSWORD`，然后执行：
+首次登录账号默认为 `admin`，密码由 `.env` 的 `INITIAL_ADMIN_PASSWORD` 决定。若忘记管理员密码，先修改该配置，再执行：
 
 ```bash
 docker compose run --rm --no-deps --entrypoint node web /app/web/scripts/bootstrap-admin.mjs --reset
 ```
-
-此命令只重置指定管理员密码，不会重建数据库、不执行 Seed，也不会修改其他用户。数据库不可连接时不能重置密码，因为密码哈希保存在 MySQL 中。

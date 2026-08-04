@@ -1,7 +1,7 @@
 # IT_IMP Docker Compose
 #
-# 本文件位于主项目中，构建时直接使用 ../../web，避免维护源码副本。
-# 使用前请复制 .env.example 为 .env，并只在 .env 中修改部署参数。
+# 正式发布版：直接拉取 GitHub Container Registry 镜像，不需要源码或本机构建。
+# 使用前请复制 .env.example 为 .env，并只在 .env 中修改可选部署参数。
 
 services:
   db:
@@ -24,12 +24,7 @@ services:
       start_period: 60s
 
   web:
-    image: ${IT_IMP_IMAGE:-it-imp-web:local}
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile
-      args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
+    image: ${IT_IMP_IMAGE:-ghcr.io/linjuli1956/it-imp-web:latest}
     restart: unless-stopped
     depends_on:
       db:

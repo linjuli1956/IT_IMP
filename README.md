@@ -9,15 +9,15 @@
 
 ## Docker Compose 快速开始
 
-准备一台已安装 Docker Engine 和 Docker Compose 插件的 Linux 主机：
+准备一台已安装 Docker Engine 和 Docker Compose 插件的 Linux 主机。用户不需要克隆源码、不需要安装 Node.js 或 Go，也不需要本机构建镜像：
 
 ```bash
-git clone https://github.com/linjuli1956/IT_IMP.git
-cd IT_IMP/deploy/docker
-
-cp .env.example .env
-nano .env                    # 修改端口、DATA_DIR、密码和平台名称
-docker compose up -d --build
+mkdir -p /vol1/1000/docker/IT_IMP_docker
+cd /vol1/1000/docker/IT_IMP_docker
+curl -fsSLO https://raw.githubusercontent.com/linjuli1956/IT_IMP/main/deploy/docker/docker-compose.yml
+curl -fsSLo .env https://raw.githubusercontent.com/linjuli1956/IT_IMP/main/deploy/docker/.env.example
+nano .env                    # 首次仅修改 DATA_DIR、两个密钥和管理员密码
+docker compose up -d
 docker compose ps
 ```
 
