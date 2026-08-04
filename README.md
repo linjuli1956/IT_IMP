@@ -1,96 +1,69 @@
 # IT_IMP
 
-泰兴信息部管理平台。项目维护一套 `web/` 业务源码，同时提供 Windows EXE 和 Docker 两种部署方式。
+一个可自托管的综合管理平台。项目只维护一套 `web/` 业务源码，并提供两种部署方式：
 
-当前版本：`v0.0001`（版本号文件：[`VERSION`](VERSION)）
+- **Docker Compose（推荐）**：适合 Linux 服务器部署；
+- **Windows EXE**：提供桌面配置工具，用于本地配置与启动服务。
 
-## 目录结构
+当前开发版本：`v0.0001`。
 
-- `web/`：Nuxt/Vue/Prisma 业务源码，EXE 与 Docker 共用。
-- `desktop/`：Wails Windows 桌面壳，负责启动本地业务服务并提供 EXE 入口。
-- `deploy/docker/`：Docker Compose、Dockerfile 和容器入口脚本。
-- `data/`：本地运行数据目录，不提交真实业务数据。
-- `docs/`：公开技术文档；真实业务资料、PDF 和预算文件不进入公开仓库。
+## Docker Compose 快速开始
 
-## 平台名称
+准备一台已安装 Docker Engine 和 Docker Compose 插件的 Linux 主机：
 
-默认平台名称为“综合管理平台”。桌面配置工具显示为“综合管理平台-配置工具V0.01”。
+```bash
+git clone https://github.com/linjuli1956/IT_IMP.git
+cd IT_IMP/deploy/docker
 
-- EXE：在“数据库配置”页的“平台名称”中修改并保存；启动 Web 服务时会同步传入该名称。
-- Docker：在 `deploy/docker/.env.docker` 中设置 `NUXT_PUBLIC_APP_NAME=你的平台名称`，然后重启 Web 服务。
+cp .env.docker.example .env.docker
+cp secrets/mysql_root_password.txt.example secrets/mysql_root_password.txt
+cp secrets/jwt_secret.txt.example secrets/jwt_secret.txt
 
-## 开发环境
+# 为数据库和 JWT 分别生成私密值
+openssl rand -base64 24 | tr -d '\n' > secrets/mysql_root_password.txt
+openssl rand -hex 32 > secrets/jwt_secret.txt
+chmod 600 secrets/*.txt
 
-- Go 1.25+（Wails 桌面端）
-- Node.js 24+ 与 npm
-- Docker Desktop（容器部署）
-- Windows 桌面端需要 WebView2 Runtime
-
-业务源码安装依赖并运行：
-
-```powershell
-cd web
-Copy-Item .env.example .env
-npm install
-npx prisma generate
-npm run dev
+docker compose --env-file .env.docker up -d --build
+docker compose --env-file .env.docker ps
 ```
+
+默认访问地址为 `http://服务器地址:3000`。首次登录账号为 `admin`，密码为 `123456`；请在首次部署前通过 `.env.docker` 修改 `INITIAL_ADMIN_PASSWORD`，或在首次登录后立即修改密码。
+
+完整的配置、更新、日志、备份及密码重置说明见 [Docker Compose 部署指南](deploy/docker/README.md)。
 
 ## Windows EXE
 
-```powershell
-cd desktop
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
-wails doctor
-wails build
-```
+桌面配置工具用于配置数据库、初始化空数据库、创建首个管理员和启动本地 Web 服务。可分发版本必须将 `platform-config.exe`、`bun/` 和 `web/` 目录作为一个完整发布包一起复制，不能只复制 EXE 文件。
 
-产物位于 `desktop/build/bin/platform-config.exe`。EXE 内置桌面壳，运行时需要能找到同目录发布包中的 `web/` 和 `bun/` 运行文件；开发构建时也会向上查找项目中的 `web/`。
-
-### 生成可分发的 EXE 发布包
-
-不能只分发单个 EXE。初始化数据库和启动本地 Web 服务需要同目录的 Bun 运行时及 Web 运行文件。请先安装 Bun，然后执行：
+构建发布包：
 
 ```powershell
 .\desktop\build-release.ps1
 ```
 
-脚本会生成 `desktop/build/release/IT_IMP-v0.0001/`，其中包含：
+产物位于 `desktop/build/release/IT_IMP-v0.0001/`。管理员创建和密码恢复规则见 [管理员账号与密码](docs/管理员账号与密码.md)。
 
-- `platform-config.exe`：桌面配置工具；
-- `bun/bun.exe`：随包携带的 Bun 运行时；
-- `web/`：Nuxt 构建产物、Prisma 迁移和运行依赖。
+## 项目结构
 
-发布时请整体复制该目录，不要只复制 EXE。
+- `web/`：Nuxt、Vue、Prisma 业务源码，Docker 与 EXE 共用；
+- `desktop/`：Wails 桌面配置工具；
+- `deploy/docker/`：Docker Compose、Dockerfile 和容器启动脚本；
+- `docs/`：面向部署者和贡献者的公开说明；
+- `data/`：本地运行目录，仅保留空目录占位文件，不含任何业务数据。
 
-## Docker
+## 开发与测试
 
-Docker 直接从根目录的 `web/` 构建，不维护第二份业务源码：
-
-```powershell
-cd deploy/docker
-Copy-Item .env.docker.example .env.docker
-Copy-Item .\secrets\mysql_root_password.txt.example .\secrets\mysql_root_password.txt
-Copy-Item .\secrets\jwt_secret.txt.example .\secrets\jwt_secret.txt
-# 编辑两个 .txt 文件：MySQL 密码、JWT 密钥
-docker compose --env-file .env.docker up -d --build
-```
-
-首次启动必须创建本机 Docker Secret 文件，用于首次管理员密码；该文件不提交 Git。账号、密码、恢复方式和数据库不可达时的处理原则见 [管理员账号与密码](docs/管理员账号与密码.md) 与 [Docker 部署文档](deploy/docker/README.md)。
-
-默认访问 `http://localhost:3000`。完整说明见 [`deploy/docker/README.md`](deploy/docker/README.md)。
-
-## 测试与构建
+开发环境需要 Node.js 24+；构建 Windows EXE 还需要 Go 1.25+、Wails 与 WebView2 Runtime。
 
 ```powershell
+npm.cmd --prefix web install
 npm.cmd --prefix web run build
 npm.cmd --prefix web test
 ```
 
-如果 npm 11 提示阻止依赖安装脚本，请仍然显式执行 `npx prisma generate`；它会生成本地开发和构建所需的 Prisma 客户端。
+贡献方式见 [贡献指南](CONTRIBUTING.md)。请勿提交 `.env`、密码、密钥、数据库备份、上传文件、真实业务数据、`node_modules` 或构建产物。
 
-测试需要先按 `web/.env.example` 配置环境。仓库不预置任何业务数据；首次部署执行 Prisma migrations 并创建一个首次管理员，其余业务表保持空白，业务数据由部署者自行录入。
+## 许可证与安全
 
-## 安全与许可证
-
-请勿提交 `.env`、数据库密码、商户密钥、真实业务数据或构建产物。安全问题请阅读 [`SECURITY.md`](SECURITY.md)。本项目源码按 [`Apache-2.0`](LICENSE) 发布；第三方依赖仍遵循其各自许可证，见 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)。
+本项目以 [Apache-2.0](LICENSE) 许可证发布。安全问题请按照 [安全策略](SECURITY.md) 私密报告；第三方依赖许可证见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。

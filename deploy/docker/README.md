@@ -1,111 +1,110 @@
-# IT_IMP Docker 部署
+# Docker Compose 部署指南
 
-Docker 配置属于主项目的一部分，构建时直接使用 `../../web`，不再维护第二份源码。
+本目录是 IT_IMP 的正式容器部署入口。Docker 构建直接使用仓库根目录的 `web/` 源码，不存在第二套 Docker 业务代码。
 
-## 首次启动
+## 运行要求
 
-Windows PowerShell：
+- Linux 主机；
+- Docker Engine 24+；
+- Docker Compose 插件（命令为 `docker compose`）；
+- 已开放应用访问端口，默认 `3000`。
 
-```powershell
-cd C:\lsg\IT_IMP_V0.0001\IT_IMP\deploy\docker
-Copy-Item .env.docker.example .env.docker
-Copy-Item .\secrets\mysql_root_password.txt.example .\secrets\mysql_root_password.txt
-Copy-Item .\secrets\jwt_secret.txt.example .\secrets\jwt_secret.txt
-# 编辑两个 .txt 文件：分别写入 MySQL 密码和 JWT 密钥
-docker compose --env-file .env.docker up -d --build
-```
-
-Linux：
+## 首次部署
 
 ```bash
-cd /path/to/IT_IMP/deploy/docker
+git clone https://github.com/linjuli1956/IT_IMP.git
+cd IT_IMP/deploy/docker
+
 cp .env.docker.example .env.docker
 cp secrets/mysql_root_password.txt.example secrets/mysql_root_password.txt
 cp secrets/jwt_secret.txt.example secrets/jwt_secret.txt
-# 编辑两个 .txt 文件：分别写入 MySQL 密码和 JWT 密钥
+
+# 写入随机密码与 JWT 密钥；这两个文件不会提交到 Git
+openssl rand -base64 24 | tr -d '\n' > secrets/mysql_root_password.txt
+openssl rand -hex 32 > secrets/jwt_secret.txt
+chmod 600 secrets/*.txt
+
+# 可选：部署前编辑 .env.docker，修改平台名称、端口和首次管理员密码
 docker compose --env-file .env.docker up -d --build
+docker compose --env-file .env.docker ps
 ```
 
-访问地址默认为 `http://localhost:3000`。
+浏览器访问 `http://服务器地址:3000`。
 
-## 首次管理员（必须阅读）
+## 首次管理员
 
-系统没有 Seed、示例业务数据或公开数据库快照；第一次成功迁移后只会创建一个管理员。基础 Compose 将 MySQL root 密码和 JWT 密钥作为 Docker Secrets 挂载；首次管理员则提供公开默认值，方便开箱即用。
-
-默认示例是：
+基础 Compose 默认创建首个管理员：
 
 ```text
 账号：admin
 密码：123456
 ```
 
-这是基础 Compose 的默认值。可在首次启动前通过 `.env.docker` 修改账号或密码：
+在执行首次 `up` 前，可编辑 `.env.docker`：
 
-```text
+```dotenv
 INITIAL_ADMIN_USERNAME=admin
-INITIAL_ADMIN_PASSWORD=123456
+INITIAL_ADMIN_PASSWORD=请改成至少 6 位的强密码
 ```
 
-创建规则：
+管理员仅在 `users` 表为空时创建一次。后续重启容器、升级镜像或修改这两个环境变量，都不会覆盖已有用户或密码。首次登录后应立即在系统中修改密码。
 
-1. 容器先执行 Prisma 迁移，创建数据库表。
-2. 只有 `users` 表没有任何用户时，才会用上述密码创建管理员。
-3. 一旦已有任意用户，后续重启、更新镜像或修改环境变量都只会显示“跳过初始管理员创建”，绝不会覆盖现有密码或业务数据。
-4. 首次登录后，请在右上角菜单选择“修改密码”。
+生产环境若希望首次管理员密码也以文件保存，可创建 `secrets/initial_admin_password.txt`，并使用可选配置：
 
-生产环境如需将首次管理员密码也放入 Docker Secret，请复制密码示例文件并叠加可选配置：
-
-```powershell
-Copy-Item .\secrets\initial_admin_password.txt.example .\secrets\initial_admin_password.txt
+```bash
+cp secrets/initial_admin_password.txt.example secrets/initial_admin_password.txt
+chmod 600 secrets/initial_admin_password.txt
 docker compose -f docker-compose.yml -f docker-compose.secrets.yml --env-file .env.docker up -d --build
 ```
 
-该 Secret 会覆盖 `.env.docker` 中的 `INITIAL_ADMIN_PASSWORD`。真实 Secret 文件已经被 `.gitignore` 排除。若它被误提交，请按 [SECURITY.md](../../SECURITY.md) 的泄露凭据流程立即更换相关密码/密钥和 Git 历史。
+该 Secret 的值优先于 `.env.docker` 中的 `INITIAL_ADMIN_PASSWORD`。
+
+## 常用操作
+
+```bash
+# 查看服务状态和 Web 日志
+docker compose --env-file .env.docker ps
+docker compose --env-file .env.docker logs -f web
+
+# 更新源码后重新构建并启动
+git pull
+docker compose --env-file .env.docker up -d --build
+
+# 停止服务（保留数据库与上传文件）
+docker compose --env-file .env.docker down
+```
+
+数据持久化位置：
+
+- MySQL：`deploy/docker/data/mysql/`
+- 应用上传文件：`deploy/docker/data/app/`
+
+备份时应停止写入或使用 MySQL 的一致性备份工具；不要把 `data/`、`.env.docker` 或 `secrets/*.txt` 提交到 Git。
+
+## 配置项
+
+编辑 `.env.docker` 后，使用 `docker compose --env-file .env.docker up -d` 应用修改。
+
+| 配置项 | 作用 | 默认值 |
+| --- | --- | --- |
+| `WEB_PORT` | Web 对外端口 | `3000` |
+| `NUXT_PUBLIC_APP_NAME` | 平台显示名称 | `综合管理平台` |
+| `INITIAL_ADMIN_USERNAME` | 首次管理员账号 | `admin` |
+| `INITIAL_ADMIN_PASSWORD` | 首次管理员密码 | `123456` |
+| `TZ` | 容器时区 | `Asia/Shanghai` |
+| `MYSQL_BIND_ADDRESS` | MySQL 的宿主机监听地址 | `127.0.0.1` |
+| `MYSQL_PORT` | MySQL 宿主机端口 | `3306` |
+
+MySQL 仅供应用容器使用；默认只绑定宿主机回环地址。除非确有必要，不要将 `MYSQL_BIND_ADDRESS` 改为 `0.0.0.0`。
 
 ## 忘记管理员密码
 
-在数据库仍可正常连接、`db` 服务已运行的前提下，先把 `.env.docker` 中的 `INITIAL_ADMIN_PASSWORD` 改为一个新的临时密码，然后显式执行一次恢复命令：
+先在 `.env.docker` 中设置新的 `INITIAL_ADMIN_PASSWORD`，然后在数据库和 `db` 容器可用时执行：
 
 ```bash
 docker compose --env-file .env.docker run --rm --no-deps --entrypoint node web /app/web/scripts/bootstrap-admin.mjs --reset
 ```
 
-该命令只重设 `.env.docker` 中 `INITIAL_ADMIN_USERNAME` 指定账号的密码，不会重建数据库、不执行 Seed，也不会改动其他用户。若使用可选 Secret 配置，则以 Secret 中的密码为准。完成后立即登录并通过界面设置正式密码。
+命令只重置 `INITIAL_ADMIN_USERNAME` 指定账号的密码，不会重建数据库、执行 Seed 或修改其他用户。若使用 `initial_admin_password.txt` Secret，请使用它的值，并在命令中叠加 `docker-compose.secrets.yml`。
 
-Docker Secret 和 EXE 的配置界面都不能在**数据库完全不可达**时修改登录密码，因为密码哈希保存在 `users` 表中。此时应先恢复 MySQL 的网络、账号权限和数据卷；若数据库已丢失，则按首次部署流程新建数据库并创建新的首次管理员。
-
-默认平台名称为“综合管理平台”。如需改成自己的品牌名称，在 `.env.docker` 中设置 `NUXT_PUBLIC_APP_NAME` 后重启 Web 服务即可：
-
-```text
-NUXT_PUBLIC_APP_NAME=你的平台名称
-```
-
-## 常用命令
-
-```bash
-docker compose --env-file .env.docker logs -f web
-docker compose --env-file .env.docker restart web
-docker compose --env-file .env.docker down
-docker compose --env-file .env.docker up -d --build
-```
-
-数据库文件保存在 `deploy/docker/data/mysql`，上传文件和日志保存在 `deploy/docker/data/app`。镜像不会自动写入演示或业务数据；首次启动完成迁移后只有一个首次管理员，其余业务表保持空白。
-
-修改 `web/` 下的业务源码后，重新执行 `up -d --build` 即可生成新的镜像。
-
-## 使用 GitHub Container Registry 镜像
-
-发布到 GitHub Container Registry 后，把 `.env.docker` 中的 `IT_IMP_IMAGE` 改为：
-
-```text
-ghcr.io/<你的 GitHub 用户名>/it-imp-web:v0.0001
-```
-
-然后执行：
-
-```bash
-docker compose --env-file .env.docker pull web
-docker compose --env-file .env.docker up -d --no-build
-```
-
-源码构建模式仍使用 `up -d --build`，两种模式共用同一份 `web/` 源码。
+数据库不可连接时不能重置密码，因为密码哈希保存在数据库中；应先恢复数据库服务、网络或数据卷。
