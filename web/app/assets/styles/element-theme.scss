@@ -1,0 +1,47 @@
+/* ===========================================
+ * Element Plus 橙色主题定制
+ * 覆盖 Element Plus 默认蓝色为橙色系
+ * =========================================== */
+
+:root {
+  /* 主色覆盖 */
+  --el-color-primary: #E6A23C;
+  --el-color-primary-light-3: #EBB056;
+  --el-color-primary-light-5: #F0C078;
+  --el-color-primary-light-7: #F5DAB1;
+  --el-color-primary-light-8: #FAE8C9;
+  --el-color-primary-light-9: #FDF6EC;
+  --el-color-primary-dark-2: #C98A2E;
+
+  /* 功能色保持 Element Plus 默认 */
+  --el-color-success: #67C23A;
+  --el-color-warning: #E6A23C;
+  --el-color-danger: #F56C6C;
+  --el-color-info: #909399;
+
+  /* 边框色 */
+  --el-border-color: #DCDFE6;
+  --el-border-color-light: #E4E7ED;
+  --el-border-color-lighter: #EBEEF5;
+
+  /* 背景色 */
+  --el-bg-color: #FFFFFF;
+  --el-bg-color-page: #F5F7FA;
+  --el-bg-color-overlay: #FFFFFF;
+
+  /* 文字色 */
+  --el-text-color-primary: #303133;
+  --el-text-color-regular: #606266;
+  --el-text-color-secondary: #909399;
+  --el-text-color-placeholder: #C0C4CC;
+
+  /* 圆角 */
+  --el-border-radius-base: 4px;
+  --el-border-radius-small: 2px;
+  --el-border-radius-round: 20px;
+
+  /* 字体 */
+  --el-font-size-base: 14px;
+  --el-font-size-small: 13px;
+  --el-font-size-extra-small: 12px;
+}

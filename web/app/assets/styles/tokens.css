@@ -1,0 +1,117 @@
+/* ===========================================
+ * Design Token — 设计变量定义
+ * 禁止在页面中硬编码颜色/字号/间距，统一使用变量
+ * =========================================== */
+
+:root {
+  /* —— 主色（橙色系）—— */
+  --color-primary: #E6A23C;
+  --color-primary-hover: #EBB056;
+  --color-primary-active: #C98A2E;
+  --color-primary-light: #FDF6EC;
+  --color-primary-border: #F5DAB1;
+
+  /* —— 功能色 —— */
+  --color-success: #67C23A;
+  --color-warning: #E6A23C;
+  --color-danger: #F56C6C;
+  --color-info: #909399;
+
+  /* —— 功能色浅背景（用于指标卡片等）—— */
+  --color-success-light: #F0F9EB;
+  --color-warning-light: #FDF6EC;
+  --color-danger-light: #FEF0F0;
+  --color-info-light: #F4F4F5;
+
+  /* —— 支付服务商行底色 —— */
+  --provider-postal-bg: #F0F7FF;
+  --provider-postal-hover: #E1EFFA;
+  --provider-angjie-bg: #FFF8F0;
+  --provider-angjie-hover: #FFEFD9;
+  --provider-angjie-offline-bg: #F0FFF4;
+  --provider-angjie-offline-hover: #DFFAE6;
+
+  /* —— 服务器类型行底色 —— */
+  --server-type-local-bg: #F0F7FF;       --server-type-local-hover: #E1EFFA;       /* 本地 - 浅蓝 */
+  --server-type-aliyun-bg: #FFF8F0;      --server-type-aliyun-hover: #FFEFD9;      /* 阿里云 - 浅橙 */
+  --server-type-tencent-bg: #F0FFF4;     --server-type-tencent-hover: #DFFAE6;     /* 腾讯云 - 浅绿 */
+  --server-type-huawei-bg: #FAF5FF;      --server-type-huawei-hover: #F0E6FF;      /* 华为云 - 浅紫 */
+  --server-type-other-bg: #F4F4F5;       --server-type-other-hover: #E9E9EB;       /* 其他/自定义 - 浅灰 */
+
+  /* —— 域名证书类型行底色 —— */
+  --cert-type-dv-bg: #F0F7FF;            --cert-type-dv-hover: #E1EFFA;            /* DV - 浅蓝 */
+  --cert-type-ov-bg: #FFF8F0;            --cert-type-ov-hover: #FFEFD9;            /* OV - 浅橙 */
+  --cert-type-ev-bg: #F0FFF4;            --cert-type-ev-hover: #DFFAE6;             /* EV - 浅绿 */
+  --cert-type-none-bg: #F4F4F5;          --cert-type-none-hover: #E9E9EB;          /* 无证书 - 浅灰 */
+
+  /* —— 小程序状态行底色 —— */
+  --miniapp-active-bg: #F0FFF4;          --miniapp-active-hover: #DFFAE6;          /* 正常 - 浅绿 */
+  --miniapp-inactive-bg: #FEF0F0;        --miniapp-inactive-hover: #FDE2E2;        /* 停用 - 浅红 */
+
+  /* —— 门店行底色调色板（汇总视图行区分，11色循环）—— */
+  --store-row-0-bg: #F0F7FF;       --store-row-0-hover: #E1EFFA;
+  --store-row-1-bg: #FFF8F0;       --store-row-1-hover: #FFEFD9;
+  --store-row-2-bg: #F0FFF4;       --store-row-2-hover: #DFFAE6;
+  --store-row-3-bg: #FDF6EC;       --store-row-3-hover: #FAECD6;
+  --store-row-4-bg: #F4F4F5;       --store-row-4-hover: #E9E9EB;
+  --store-row-5-bg: #FFF0F6;       --store-row-5-hover: #FFDEEA;
+  --store-row-6-bg: #FAF5FF;       --store-row-6-hover: #F0E6FF;
+  --store-row-7-bg: #F0FAFA;       --store-row-7-hover: #D9F3F3;
+  --store-row-8-bg: #FFFBE6;       --store-row-8-hover: #FFF3B8;
+  --store-row-9-bg: #F5F0FF;       --store-row-9-hover: #E6D9FF;
+  --store-row-10-bg: #F0FFF0;      --store-row-10-hover: #DFFADF;
+
+  /* —— 业务类型配色（客户/合同类型标签）—— */
+  --type-operator: #409eff;      /* 运营商/宽带 - 蓝 */
+  --type-equipment: #67C23A;     /* 设备商/设备采购 - 绿 */
+  --type-service: #E6A23C;       /* 服务商/项目 - 橙 */
+  --type-integrator: #9b59b6;    /* 施工方/采购 - 紫 */
+  --type-software: #13c2c2;      /* 软件供应商/维保 - 青 */
+  --type-other: #909399;         /* 其他 - 灰 */
+
+  /* —— 文字色 —— */
+  --text-primary: #303133;
+  --text-regular: #606266;
+  --text-secondary: #909399;
+  --text-placeholder: #C0C4CC;
+
+  /* —— 边框/背景 —— */
+  --border-base: #DCDFE6;
+  --border-light: #E4E7ED;
+  --border-lighter: #EBEEF5;
+  --bg-page: #F5F7FA;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F5F7FA;
+  --color-white: #FFFFFF;
+
+  /* —— 字号 —— */
+  --font-size-title: 18px;
+  --font-size-subtitle: 16px;
+  --font-size-body: 14px;
+  --font-size-small: 13px;
+  --font-size-mini: 12px;
+  --font-size-micro: 11px;
+  --font-size-display: 28px;   /* 指标卡片大数字 */
+  --font-size-large: 22px;    /* 登录页标题 */
+  --font-size-icon: 20px;     /* 图标按钮（折叠按钮等） */
+
+  /* —— 间距 —— */
+  --spacing-page: 20px;
+  --spacing-card: 16px;
+  --spacing-form-item: 18px;
+  --spacing-btn-gap: 12px;
+  --spacing-sm: 8px;
+  --spacing-table-row: 48px;
+
+  /* —— 圆角 —— */
+  --radius-card: 8px;
+  --radius-btn: 4px;
+  --radius-input: 4px;
+  --radius-dialog: 8px;
+  --radius-small: 3px;        /* 小圆角（拖拽上传提示等） */
+
+  /* —— 阴影 —— */
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --shadow-dialog: 0 2px 16px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 4px 16px rgba(230, 162, 60, 0.15);
+}

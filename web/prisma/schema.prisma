@@ -1,0 +1,540 @@
+// ===========================================
+// 泰兴超市信息部综合管理平台 — Prisma 数据模型
+// 数据库：MySQL 8.0 (utf8mb4)
+// 命名规则：表名/字段名使用英文+下划线，中文含义通过注释表达
+// ===========================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ===========================================
+// 1. 系统管理
+// ===========================================
+
+/// 系统用户表 — 存储登录账号和角色信息
+model User {
+  /// 用户主键ID，自增
+  id           Int       @id @default(autoincrement())
+  /// 登录用户名，唯一
+  username     String    @unique @db.VarChar(50)
+  /// 登录密码哈希值，不保存明文密码
+  passwordHash String    @db.VarChar(255)
+  /// 用户姓名（显示名称）
+  name         String    @db.VarChar(50)
+  /// 角色：管理员 / 操作员 / 查看者
+  role         String    @db.VarChar(20) @default("查看者")
+  /// 状态：1=启用，0=禁用
+  status       Int       @default(1)
+  /// 最后登录时间
+  lastLogin    DateTime? @db.DateTime(0)
+  /// 创建时间
+  createdAt    DateTime  @default(now()) @db.DateTime(0)
+  /// 最后更新时间
+  updatedAt    DateTime  @updatedAt @db.DateTime(0)
+
+  /// 关联的操作日志列表
+  logs OperationLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+/// 操作日志表 — 记录用户所有操作行为，用于审计追踪
+model OperationLog {
+  /// 日志主键ID，自增
+  id        Int      @id @default(autoincrement())
+  /// 操作用户ID，关联 users 表，可为空（用户删除后保留日志）
+  userId    Int?     @map("user_id")
+  /// 操作用户名（冗余存储，用户删除后仍可追溯）
+  username  String   @db.VarChar(50)
+  /// 操作类型：新增 / 编辑 / 删除 / 登录 / 登出 / 导出 / 打印 / OCR导入 / 启动服务 / 停止服务 / 数据库初始化 / 数据库升级
+  action    String   @db.VarChar(20)
+  /// 操作模块：发票管理 / 计提管理 / 合同管理 / 预算管理 / 系统管理 / 基础配置 / 明细表管理 / IT资产管理 / 支付管理
+  module    String   @db.VarChar(50)
+  /// 操作内容详情
+  content   String   @db.Text
+  /// 操作IP地址
+  ip        String   @db.VarChar(50) @default("")
+  /// 操作时间
+  createdAt DateTime @default(now()) @db.DateTime(0)
+
+  /// 关联用户
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([module])
+  @@index([createdAt])
+  @@map("operation_logs")
+}
+
+// ===========================================
+// 2. 基础配置
+// ===========================================
+
+/// 门店表 — 存储所有门店/机构信息，全局数据源
+model Store {
+  /// 门店主键ID，自增
+  id     Int    @id @default(autoincrement())
+  /// 门店名称
+  name   String @db.VarChar(100)
+  /// 机构代码（支付配置关联用）
+  code   String @db.VarChar(20) @default("")
+  /// 排序序号，越小越靠前
+  sort   Int    @default(0)
+  /// 状态：1=启用，0=禁用
+  status Int    @default(1)
+
+  @@index([status])
+  @@index([sort])
+  @@map("stores")
+}
+
+/// 供应商表 — 存储运营商、设备商、服务商等供应商信息
+model Supplier {
+  /// 供应商主键ID，自增
+  id      Int    @id @default(autoincrement())
+  /// 供应商名称
+  name    String @db.VarChar(200)
+  /// 联系人
+  contact String @db.VarChar(50) @default("")
+  /// 联系电话
+  phone   String @db.VarChar(50) @default("")
+  /// 地址
+  address String @db.VarChar(500) @default("")
+  /// 供应商类型：运营商 / 设备商 / 服务商 / 施工方(集成商) / 软件供应商 / 其他
+  type    String @db.VarChar(50)
+  /// 备注
+  remark  String @db.VarChar(1000) @default("")
+
+  @@index([type])
+  @@map("suppliers")
+}
+
+/// 计提模板表 — 存储每个运营商+门店的计提项目模板，用于快速生成计提记录
+model AccrualTemplate {
+  /// 模板主键ID，自增
+  id                   Int      @id @default(autoincrement())
+  /// 运营商：电信 / 移动 / 联通
+  carrier              String   @db.VarChar(20)
+  /// 门店/机构名称
+  store                String   @db.VarChar(100)
+  /// 计提项目数量
+  itemCount            Int      @default(0)
+  /// 最后更新时间
+  updateTime           DateTime @default(now()) @db.DateTime(0)
+  /// 报销说明格式：分摊明细型 / 费用明细型 / 汇总型 / 自定义
+  reimbursementFormat  String   @db.VarChar(50) @default("分摊明细型")
+  /// 自定义报销说明格式（当 reimbursementFormat 为"自定义"时使用）
+  reimbursementCustom  String   @db.VarChar(2000) @default("")
+  /// 计提项目列表，JSON 存储 TemplateItem[]
+  items                Json     @default("[]")
+
+  @@index([carrier])
+  @@index([store])
+  @@map("accrual_templates")
+}
+
+/// 费用分摊方案表 — 通用费用分摊规则引擎，支持跨门店分摊
+model FeeAllocationScheme {
+  /// 方案主键ID，自增
+  id                   Int      @id @default(autoincrement())
+  /// 方案名称，如"联通宽带套餐分摊"
+  name                 String   @db.VarChar(100)
+  /// 运营商（空字符串=通用，不绑定特定运营商）
+  carrier              String   @db.VarChar(20) @default("")
+  /// 费用项列表，JSON 存储 FeeItem[]
+  items                Json     @default("[]")
+  /// 报销说明格式
+  reimbursementFormat  String   @db.VarChar(50) @default("分摊明细型")
+  /// 自定义报销说明
+  reimbursementCustom  String   @db.VarChar(2000) @default("")
+  /// 状态：1=启用，0=禁用
+  status               Int      @default(1)
+  /// 更新时间（自动更新）
+  updateTime           DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([carrier])
+  @@index([status])
+  @@map("fee_allocation_schemes")
+}
+
+// ===========================================
+// 3. 发票管理
+// ===========================================
+
+/// 发票批次表 — 按运营商+费用月份分组管理发票
+model InvoiceBatch {
+  /// 批次主键ID，自增
+  id           Int      @id @default(autoincrement())
+  /// 批次编号，唯一，格式如 202606DX01（年月+运营商缩写+序号）
+  batchNo      String   @unique @db.VarChar(20)
+  /// 运营商：电信 / 移动 / 联通
+  carrier      String   @db.VarChar(20)
+  /// 费用月份，格式 YYYY-MM
+  feeMonth     String   @db.VarChar(10)
+  /// 关联门店（顿号分隔多个门店）
+  store        String   @db.VarChar(200) @default("")
+  /// 发票数量
+  invoiceCount Int      @default(0)
+  /// 发票总金额（价税合计）
+  totalAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  /// 状态：pending 待处理 / accrued 已计提 / printed 已打印
+  status       String   @db.VarChar(20) @default("pending")
+  /// 创建时间
+  createTime   DateTime @default(now()) @db.DateTime(0)
+
+  /// 批次下的发票列表
+  invoices Invoice[]
+
+  @@index([carrier])
+  @@index([feeMonth])
+  @@index([status])
+  @@map("invoice_batches")
+}
+
+/// 发票表 — 存储上传的发票PDF及OCR识别结果
+model Invoice {
+  /// 发票主键ID，自增
+  id             Int      @id @default(autoincrement())
+  /// 所属批次ID，关联 invoice_batches 表
+  batchId        Int?     @map("batch_id")
+  /// 发票文件名
+  name           String   @db.VarChar(255)
+  /// 运营商：电信 / 移动 / 联通
+  carrier        String   @db.VarChar(20)
+  /// 费用月份，格式 YYYY-MM
+  feeMonth       String   @db.VarChar(10) @default("")
+  /// 关联门店/机构（字符串数组，JSON 存储）
+  stores         Json     @default("[]")
+  /// 价税合计金额
+  amount         Decimal  @default(0) @db.Decimal(12, 2)
+  /// 发票号码（独立列，便于查询统计）
+  invoiceNumber  String   @db.VarChar(50) @default("")
+  /// 开票日期，格式 YYYY-MM-DD
+  invoiceDate    String   @db.VarChar(10) @default("")
+  /// 销售方名称
+  sellerName     String   @db.VarChar(200) @default("")
+  /// 状态：uploaded 已上传 / ocr-pending OCR待确认 / ocr-confirmed OCR已确认 / ocr-failed OCR失败 / pending 待处理
+  status         String   @db.VarChar(20) @default("uploaded")
+  /// 上传时间
+  uploadTime     DateTime @default(now()) @db.DateTime(0)
+  /// PDF文件存储路径
+  filePath       String   @db.VarChar(500) @default("")
+  /// OCR识别结果（JSON 存储）
+  ocrResult      Json     @default("{}")
+
+  /// 所属批次
+  batch InvoiceBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([batchId])
+  @@index([carrier])
+  @@index([feeMonth])
+  @@index([status])
+  @@map("invoices")
+}
+
+// ===========================================
+// 4. 明细表
+// ===========================================
+
+/// 电信明细表 — 存储运营商提供的电信费用明细Excel解析结果
+model DetailTable {
+  /// 明细表主键ID，自增
+  id           Int      @id @default(autoincrement())
+  /// 运营商：电信 / 移动 / 联通
+  carrier      String   @db.VarChar(20)
+  /// 费用月份，格式 YYYY-MM
+  feeMonth     String   @db.VarChar(10)
+  /// 原始文件名
+  fileName     String   @db.VarChar(255)
+  /// 原始XLS文件存储路径（相对 data/uploads/）
+  filePath     String   @db.VarChar(500) @default("")
+  /// 上传时间
+  uploadTime   DateTime @default(now()) @db.DateTime(0)
+  /// Sheet页数量
+  sheetCount   Int      @default(0)
+  /// 总号码数量
+  totalNumbers Int      @default(0)
+  /// 总金额
+  totalAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  /// Sheet页数据，JSON 存储 DetailSheet[]
+  sheets       Json     @default("[]")
+
+  @@index([carrier])
+  @@index([feeMonth])
+  @@map("detail_tables")
+}
+
+// ===========================================
+// 5. 计提管理
+// ===========================================
+
+/// 计提记录表 — 存储按批次生成的计提分组和金额
+model Accrual {
+  /// 计提记录主键ID，自增
+  id           Int      @id @default(autoincrement())
+  /// 发票批次ID，关联 invoice_batches 表
+  batchId      Int      @map("batch_id")
+  /// 批次编号
+  batchNo      String   @db.VarChar(20)
+  /// 运营商：电信 / 移动 / 联通
+  carrier      String   @db.VarChar(20)
+  /// 费用月份，格式 YYYY-MM
+  feeMonth     String   @db.VarChar(10)
+  /// 计提方式：detail 明细计提 / invoice 发票计提
+  method       String   @db.VarChar(20)
+  /// 总金额
+  totalAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  /// 状态：generated 已生成 / printed 已打印
+  status       String   @db.VarChar(20) @default("generated")
+  /// 创建时间
+  createTime   DateTime @default(now()) @db.DateTime(0)
+  /// 创建人
+  creator      String   @db.VarChar(50) @default("")
+  /// 计提分组数据，JSON 存储 AccrualGroup[]
+  groups       Json     @default("[]")
+
+  @@index([batchId])
+  @@index([carrier])
+  @@index([feeMonth])
+  @@index([status])
+  @@map("accruals")
+}
+
+// ===========================================
+// 6. 合同管理
+// ===========================================
+
+/// 合同表 — 存储宽带、设备采购、项目等各类合同信息
+model Contract {
+  /// 合同主键ID，自增
+  id         Int      @id @default(autoincrement())
+  /// 合同标题
+  title      String   @db.VarChar(255)
+  /// 供应商名称
+  supplierName String @db.VarChar(200)
+  /// 合同类型：宽带 / 设备采购 / 项目 / 采购 / 维保
+  type       String   @db.VarChar(50)
+  /// 合同金额
+  amount     Decimal  @default(0) @db.Decimal(12, 2)
+  /// 签订日期，格式 YYYY-MM-DD
+  signDate   String   @db.VarChar(10)
+  /// 到期日期，格式 YYYY-MM-DD
+  expireDate String   @db.VarChar(10)
+  /// 合同附件文件名
+  fileName   String   @db.VarChar(255) @default("")
+  /// 合同PDF存储路径（相对 data/uploads/）
+  filePath   String   @db.VarChar(500) @default("")
+  /// 备注
+  remark     String   @db.VarChar(1000) @default("")
+
+  @@index([type])
+  @@index([expireDate])
+  @@map("contracts")
+}
+
+// ===========================================
+// 7. 预算管理
+// ===========================================
+
+/// 预算明细表 — 存储每个财年各门店各运营商的费用预算
+model BudgetDetail {
+  /// 预算明细主键ID，自增
+  id            Int      @id @default(autoincrement())
+  /// 财年（如 2026 表示 26 财年 = 2026.4~2027.3）
+  fiscalYear    Int
+  /// 门店名称
+  storeName     String   @db.VarChar(100)
+  /// 运营商：电信 / 移动 / 联通 / 其他
+  carrier       String   @db.VarChar(20)
+  /// 费用类型：宽带 / 固话手机 / 物联网 / 监控 / 云服务
+  feeType       String   @db.VarChar(50)
+  /// 月度费用
+  monthlyFee    Decimal  @default(0) @db.Decimal(12, 2)
+  /// 年度费用
+  annualFee     Decimal  @default(0) @db.Decimal(12, 2)
+  /// 费用范围，格式 YYYY-MM~YYYY-MM
+  feeRange      String   @db.VarChar(50) @default("")
+  /// 宽带类型（如 100M、200M、专线等）
+  broadbandType String   @db.VarChar(50) @default("")
+  /// 缴费方式：年缴费 / 月缴费
+  paymentMethod String   @db.VarChar(50) @default("")
+  /// 备注
+  remark        String   @db.VarChar(1000) @default("")
+
+  @@index([fiscalYear])
+  @@index([storeName])
+  @@index([carrier])
+  @@map("budget_details")
+}
+
+/// 预算执行表 — 存储每个月的预算与实际执行对比数据
+model BudgetExecution {
+  /// 预算执行主键ID，自增
+  id            Int      @id @default(autoincrement())
+  /// 财年
+  fiscalYear    Int
+  /// 门店名称
+  storeName     String   @db.VarChar(100)
+  /// 运营商
+  carrier       String   @db.VarChar(20)
+  /// 月份，格式 YYYY-MM
+  month         String   @db.VarChar(10)
+  /// 预算金额
+  budgetAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  /// 实际金额
+  actualAmount  Decimal  @default(0) @db.Decimal(12, 2)
+
+  @@index([fiscalYear])
+  @@index([storeName])
+  @@index([month])
+  @@map("budget_executions")
+}
+
+// ===========================================
+// 8. 支付管理
+// ===========================================
+
+/// 支付配置表 — 存储各门店的支付方式和服务商配置信息
+model PaymentConfig {
+  /// 支付配置主键ID，自增
+  id           Int      @id @default(autoincrement())
+  /// 机构代码（关联门店）
+  storeId      String   @db.VarChar(20)
+  /// 门店名称
+  storeName    String   @db.VarChar(100)
+  /// 支付方式代码：wx 微信 / zfb 支付宝 / yl 银联 / yzf 翼支付
+  payMethod    String   @db.VarChar(20)
+  /// 支付方式名称：微信 / 支付宝 / 银联 / 翼支付
+  payMethodName String  @db.VarChar(20)
+  /// 服务商：中国邮政 / 昂捷 / 昂捷离线付
+  provider     String   @db.VarChar(50)
+  /// 配置项名称：商户号 / 密钥 / APPID 等
+  configName   String   @db.VarChar(100)
+  /// 配置项值
+  configValue  String   @db.VarChar(2000) @default("")
+  /// POS机编号
+  posNo        String   @db.VarChar(50) @default("")
+  /// 状态：正常 / 停用
+  status       String   @db.VarChar(10) @default("正常")
+  /// 是否敏感信息（敏感信息在界面脱敏显示）
+  isSensitive  Boolean  @default(false)
+
+  @@index([storeName])
+  @@index([payMethod])
+  @@index([provider])
+  @@map("payment_configs")
+}
+
+// ===========================================
+// 9. IT资产管理
+// ===========================================
+
+/// 服务器表 — 存储本地和云服务器配置信息
+model Server {
+  /// 服务器主键ID，自增
+  id             Int      @id @default(autoincrement())
+  /// 服务器名称
+  name           String   @db.VarChar(100)
+  /// 服务器类型：本地 / 阿里云 / 腾讯云 / 华为云 / 自定义
+  serverType     String   @db.VarChar(50)
+  /// 云账号（云服务器专属）
+  cloudAccount   String   @db.VarChar(100) @default("")
+  /// 内网IP
+  internalIp     String   @db.VarChar(50) @default("")
+  /// 外网IP
+  externalIp     String   @db.VarChar(50) @default("")
+  /// SSH/远程端口，默认 22
+  port           String   @db.VarChar(10) @default("22")
+  /// CPU型号
+  cpuModel       String   @db.VarChar(100) @default("")
+  /// CPU核数
+  cpuCores       String   @db.VarChar(20) @default("")
+  /// 内存大小
+  memorySize     String   @db.VarChar(20) @default("")
+  /// 系统盘大小
+  systemDiskSize String   @db.VarChar(20) @default("")
+  /// 数据盘大小
+  dataDiskSize   String   @db.VarChar(20) @default("")
+  /// 磁盘类型：SSD / HDD / SSD+HDD
+  diskType       String   @db.VarChar(20) @default("")
+  /// 操作系统
+  os             String   @db.VarChar(100) @default("")
+  /// 到期日期，格式 YYYY-MM-DD
+  expireDate     String   @db.VarChar(10) @default("")
+  /// 用途说明
+  purpose        String   @db.VarChar(1000) @default("")
+  /// 服务器登录账号
+  account        String   @db.VarChar(100) @default("")
+  /// 服务器登录密码（敏感，应用层加密）
+  password       String   @db.VarChar(255) @default("")
+  /// 数据库账号
+  dbAccount      String   @db.VarChar(100) @default("")
+  /// 数据库密码（敏感）
+  dbPassword     String   @db.VarChar(255) @default("")
+  /// 数据库端口
+  dbPort         String   @db.VarChar(10) @default("")
+  /// 备注
+  remark         String   @db.VarChar(1000) @default("")
+  /// 状态：正常 / 停用
+  status         String   @db.VarChar(10) @default("正常")
+
+  @@index([serverType])
+  @@index([status])
+  @@index([expireDate])
+  @@map("servers")
+}
+
+/// 域名表 — 存储域名及SSL证书信息
+model Domain {
+  /// 域名主键ID，自增
+  id             Int      @id @default(autoincrement())
+  /// 域名
+  domain         String   @db.VarChar(200)
+  /// 主账号
+  mainAccount    String   @db.VarChar(100) @default("")
+  /// 主账号密码（敏感）
+  mainPassword   String   @db.VarChar(255) @default("")
+  /// SSL证书类型：DV / OV / EV
+  certType       String   @db.VarChar(20) @default("")
+  /// 证书颁发机构
+  certIssuer     String   @db.VarChar(100) @default("")
+  /// 证书续签日期，格式 YYYY-MM-DD
+  certRenewDate  String   @db.VarChar(10) @default("")
+  /// 证书到期日期，格式 YYYY-MM-DD
+  certExpireDate String   @db.VarChar(10) @default("")
+  /// 备注
+  remark         String   @db.VarChar(1000) @default("")
+  /// 状态：正常 / 停用
+  status         String   @db.VarChar(10) @default("正常")
+
+  @@index([status])
+  @@index([certExpireDate])
+  @@map("domains")
+}
+
+/// 小程序表 — 存储微信小程序账号和邮箱信息
+model Miniapp {
+  /// 小程序主键ID，自增
+  id           Int      @id @default(autoincrement())
+  /// 小程序名称
+  name         String   @db.VarChar(100)
+  /// 关联邮箱
+  email        String   @db.VarChar(100) @default("")
+  /// 邮箱密码（敏感）
+  emailPassword String  @db.VarChar(255) @default("")
+  /// 备注
+  remark       String   @db.VarChar(1000) @default("")
+  /// 状态：正常 / 停用
+  status       String   @db.VarChar(10) @default("正常")
+
+  @@index([status])
+  @@map("miniapps")
+}

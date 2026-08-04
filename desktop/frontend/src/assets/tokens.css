@@ -1,0 +1,58 @@
+/* ===========================================
+ * Design Token — 桌面配置器设计变量定义
+ * 与 web 端 tokens.css 保持一致
+ * 禁止在页面中硬编码颜色/字号/间距，统一使用变量
+ * =========================================== */
+
+:root {
+  /* —— 主色（橙色系）—— */
+  --color-primary: #E6A23C;
+  --color-primary-hover: #EBB056;
+  --color-primary-active: #C98A2E;
+  --color-primary-light: #FDF6EC;
+  --color-primary-border: #F5DAB1;
+
+  /* —— 功能色 —— */
+  --color-success: #67C23A;
+  --color-warning: #E6A23C;
+  --color-danger: #F56C6C;
+  --color-info: #909399;
+
+  /* —— 文字色 —— */
+  --text-primary: #303133;
+  --text-regular: #606266;
+  --text-secondary: #909399;
+  --text-placeholder: #C0C4CC;
+
+  /* —— 边框/背景 —— */
+  --border-base: #DCDFE6;
+  --border-light: #E4E7ED;
+  --border-lighter: #EBEEF5;
+  --bg-page: #F5F7FA;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F5F7FA;
+  --bg-subtle: #f0f0f0;       /* 滚动条轨道 / 版本标签底色 */
+  --color-white: #FFFFFF;
+
+  /* —— 日志容器（深色主题）—— */
+  --bg-log: #1e1e1e;
+  --text-log: #d4d4d4;
+  --text-log-dim: #666666;    /* 空日志提示文字 */
+
+  /* —— 字号 —— */
+  --font-size-title: 18px;
+  --font-size-subtitle: 16px;
+  --font-size-body: 14px;
+  --font-size-small: 13px;
+  --font-size-mini: 12px;
+
+  /* —— 间距 —— */
+  --spacing-page: 20px;
+  --spacing-card: 16px;
+  --spacing-btn-gap: 12px;
+
+  /* —— 圆角 —— */
+  --radius-card: 8px;
+  --radius-btn: 4px;
+  --radius-small: 3px;       /* 小圆角 */
+}

@@ -1,0 +1,45 @@
+{
+  "name": "web",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@element-plus/nuxt": "^1.1.5",
+    "@pinia/nuxt": "^1.0.1",
+    "@prisma/adapter-mariadb": "^7.9.0",
+    "@prisma/client": "^7.9.0",
+    "@vueuse/core": "^14.3.0",
+    "bcryptjs": "^3.0.3",
+    "dayjs": "^1.11.21",
+    "dotenv": "^17.4.2",
+    "echarts": "^6.1.0",
+    "element-plus": "^2.14.3",
+    "exceljs": "^4.4.0",
+    "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
+    "nuxt": "^4.5.0",
+    "pdfjs-dist": "^4.10.38",
+    "pinia": "^4.0.2",
+    "sass": "^1.101.3",
+    "vue": "^3.5.40",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^5.2.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.1.1",
+    "prisma": "^7.9.0",
+    "tsx": "^4.23.1",
+    "vitest": "^3.2.7"
+  }
+}
