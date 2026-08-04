@@ -3,18 +3,19 @@ set -e
 
 cd /app/web
 
-read_required_secret() {
-  secret_file="$1"
-  secret_name="$2"
-  if [ -z "$secret_file" ] || [ ! -f "$secret_file" ]; then
-    echo "[entrypoint] ERROR: Docker Secret $secret_name is missing."
-    exit 1
-  fi
-  cat "$secret_file"
-}
+# 基础 Compose 只使用 .env；数据库密码默认复用 MySQL root 密码。
+# 如未来接入独立数据库用户，可在 .env 显式设置 DATABASE_PASSWORD 覆盖它。
+export DATABASE_PASSWORD="${DATABASE_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}"
+if [ -z "$DATABASE_PASSWORD" ]; then
+  echo "[entrypoint] ERROR: DATABASE_PASSWORD or MYSQL_ROOT_PASSWORD is missing in .env."
+  exit 1
+fi
 
-export DATABASE_PASSWORD="$(read_required_secret "${DATABASE_PASSWORD_FILE:-}" "DATABASE_PASSWORD")"
-export JWT_SECRET="$(read_required_secret "${JWT_SECRET_FILE:-}" "JWT_SECRET")"
+if [ -z "${JWT_SECRET:-}" ]; then
+  echo "[entrypoint] ERROR: JWT_SECRET is missing in .env."
+  exit 1
+fi
+
 export DATABASE_URL="mysql://${DATABASE_USER}:$(node -p 'encodeURIComponent(process.env.DATABASE_PASSWORD)')@${DATABASE_HOST}:${DATABASE_PORT:-3306}/${DATABASE_NAME}"
 
 echo "[entrypoint] IT_IMP web service starting"

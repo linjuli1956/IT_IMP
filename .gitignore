@@ -101,9 +101,7 @@ desktop/build/bin/bun/
 
 # ---- Docker 运行时数据与环境文件 ----
 deploy/docker/data/
-deploy/docker/.env.docker
-deploy/docker/secrets/*.txt
-!deploy/docker/secrets/*.txt.example
+deploy/docker/.env
 
 # ---- Qoder 缓存 ----
 .qoder/

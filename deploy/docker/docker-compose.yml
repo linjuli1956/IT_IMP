@@ -1,20 +1,19 @@
 # IT_IMP Docker Compose
 #
 # 本文件位于主项目中，构建时直接使用 ../../web，避免维护源码副本。
-# 使用前请先复制 .env.docker.example 为 .env.docker。
+# 使用前请复制 .env.example 为 .env，并只在 .env 中修改部署参数。
 
 services:
   db:
     image: ${MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped
     env_file:
-      - .env.docker
+      - .env
     environment:
-      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
-    secrets:
-      - mysql_root_password
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?请先在 .env 中设置 MYSQL_ROOT_PASSWORD}"
+    command: "--default-time-zone=${MYSQL_TIME_ZONE:-+08:00}"
     volumes:
-      - ./data/mysql:/var/lib/mysql
+      - "${DATA_DIR:-./data}/mysql:/var/lib/mysql"
     ports:
       - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
     healthcheck:
@@ -36,20 +35,8 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - .env.docker
-    environment:
-      DATABASE_PASSWORD_FILE: /run/secrets/mysql_root_password
-      JWT_SECRET_FILE: /run/secrets/jwt_secret
-    secrets:
-      - mysql_root_password
-      - jwt_secret
+      - .env
     ports:
       - "${WEB_PORT:-3000}:3000"
     volumes:
-      - ./data/app:/app/data
-
-secrets:
-  mysql_root_password:
-    file: ./secrets/mysql_root_password.txt
-  jwt_secret:
-    file: ./secrets/jwt_secret.txt
+      - "${DATA_DIR:-./data}/app:/app/data"

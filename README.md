@@ -15,20 +15,13 @@
 git clone https://github.com/linjuli1956/IT_IMP.git
 cd IT_IMP/deploy/docker
 
-cp .env.docker.example .env.docker
-cp secrets/mysql_root_password.txt.example secrets/mysql_root_password.txt
-cp secrets/jwt_secret.txt.example secrets/jwt_secret.txt
-
-# 为数据库和 JWT 分别生成私密值
-openssl rand -base64 24 | tr -d '\n' > secrets/mysql_root_password.txt
-openssl rand -hex 32 > secrets/jwt_secret.txt
-chmod 600 secrets/*.txt
-
-docker compose --env-file .env.docker up -d --build
-docker compose --env-file .env.docker ps
+cp .env.example .env
+nano .env                    # 修改端口、DATA_DIR、密码和平台名称
+docker compose up -d --build
+docker compose ps
 ```
 
-默认访问地址为 `http://服务器地址:3000`。首次登录账号为 `admin`，密码为 `123456`；请在首次部署前通过 `.env.docker` 修改 `INITIAL_ADMIN_PASSWORD`，或在首次登录后立即修改密码。
+默认访问地址为 `http://服务器地址:3000`。首次登录账号为 `admin`，密码为 `123456`；请在首次部署前通过 `.env` 修改 `INITIAL_ADMIN_PASSWORD`，或在首次登录后立即修改密码。
 
 完整的配置、更新、日志、备份及密码重置说明见 [Docker Compose 部署指南](deploy/docker/README.md)。
 
