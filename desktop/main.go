@@ -17,7 +17,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "泰兴超市信息部综合管理平台 - 配置工具",
+		Title:  "综合管理平台-配置工具V0.01",
 		Width:  900,
 		Height: 680,
 		AssetServer: &assetserver.Options{

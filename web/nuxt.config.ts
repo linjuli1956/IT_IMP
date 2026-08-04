@@ -4,6 +4,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   telemetry: false,
 
+  runtimeConfig: {
+    public: {
+      appName: process.env.NUXT_PUBLIC_APP_NAME || '综合管理平台',
+    },
+  },
+
   // 模块注册
   modules: [
     '@element-plus/nuxt',
@@ -31,11 +37,11 @@ export default defineNuxtConfig({
   // app 全局配置
   app: {
     head: {
-      title: '泰兴超市信息部综合管理平台',
+      title: process.env.NUXT_PUBLIC_APP_NAME || '综合管理平台',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: '泰兴超市信息部综合管理平台 V0.01' },
+        { name: 'description', content: '综合管理平台 V0.01' },
       ],
     },
   },

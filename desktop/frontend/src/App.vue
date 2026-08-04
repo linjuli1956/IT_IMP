@@ -1,21 +1,30 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  GetConfig, SaveDatabaseConfig, SaveWebPort, SaveJWTSecret,
+  GenerateJWTSecret, GetConfig, SaveAppName, SaveDatabaseConfig, SaveWebPort, SaveJWTSecret,
   TestConnection, InitDatabase, UpgradeDatabase, GetDatabaseStatus,
-  StartService, StopService, GetServiceStatus
+  ProvisionInitialAdmin, ResetAdminPassword, StartService, StopService, GetServiceStatus
 } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
+import InitialAdminConfig from './components/InitialAdminConfig.vue'
+import DatabaseStatusSummary from './components/DatabaseStatusSummary.vue'
 
 const dbConfig = ref({ host: '', port: 3306, username: 'root', password: '', dbname: 'it_imp' })
+const passwordConfigured = ref(false)
+const defaultAppName = '综合管理平台'
+const appName = ref(defaultAppName)
+const configToolTitle = computed(() => `${appName.value.trim() || defaultAppName}-配置工具V0.01`)
 const jwtSecret = ref('')
+const initialAdmin = ref({ username: 'admin', password: '123456' })
 const webPort = ref(3000)
 const activeTab = ref('database')
 const serviceRunning = ref(false)
 const testing = ref(false)
 const initializing = ref(false)
 const upgrading = ref(false)
+const provisioningAdmin = ref(false)
+const resettingAdmin = ref(false)
 const starting = ref(false)
 const stopping = ref(false)
 const logs = ref([])
@@ -25,12 +34,14 @@ const dbStatus = ref({ status: 'uninitialized', migrationCount: 0, lastInitTime:
 onMounted(async () => {
   try {
     const config = await GetConfig()
+    if (config?.appName) appName.value = config.appName
     if (config?.database) {
       dbConfig.value.host = config.database.host || ''
       dbConfig.value.port = config.database.port || 3306
       dbConfig.value.username = config.database.username || 'root'
       dbConfig.value.dbname = config.database.dbname || 'it_imp'
-      // password 不从配置返回，保持为空
+      passwordConfigured.value = Boolean(config.database.passwordConfigured)
+      // 密码不从配置返回，保持为空；已保存状态单独展示。
     }
     if (config?.webPort) webPort.value = config.webPort
     if (config?.jwtSecret) jwtSecret.value = config.jwtSecret
@@ -56,16 +67,6 @@ const refreshDbStatus = async () => {
   }
 }
 
-const statusTagType = (status) => {
-  const map = { uninitialized: 'warning', initialized: 'success', connection_failed: 'danger' }
-  return map[status] || 'info'
-}
-
-const statusLabel = (status) => {
-  const map = { uninitialized: '未初始化', initialized: '已初始化', connection_failed: '连接失败' }
-  return map[status] || '未知'
-}
-
 const handleTestConnection = async () => {
   testing.value = true
   try {
@@ -82,18 +83,32 @@ const handleTestConnection = async () => {
 
 const handleSaveDbConfig = async () => {
   try {
+    await SaveAppName(appName.value)
     await SaveDatabaseConfig(dbConfig.value.host, dbConfig.value.port, dbConfig.value.username, dbConfig.value.password, dbConfig.value.dbname)
     await SaveJWTSecret(jwtSecret.value)
+    if (dbConfig.value.password) {
+      passwordConfigured.value = true
+      dbConfig.value.password = ''
+    }
     ElMessage.success('数据库配置已保存（密码已加密存储）')
     await refreshDbStatus()
   } catch (e) { ElMessage.error('保存失败: ' + e) }
+}
+
+const handleGenerateJWTSecret = async () => {
+  try {
+    jwtSecret.value = await GenerateJWTSecret()
+    ElMessage.success('已生成 JWT 密钥，请点击“保存配置”')
+  } catch (e) {
+    ElMessage.error('生成 JWT 密钥失败: ' + e)
+  }
 }
 
 const handleInitDatabase = async () => {
   // 输入库名确认（GitHub 删仓库风格）
   try {
     await ElMessageBox.prompt(
-      `即将初始化数据库：\n\n远程主机: ${dbConfig.value.host}:${dbConfig.value.port}\n数据库名: ${dbConfig.value.dbname}\n用户名: ${dbConfig.value.username}\n\n此操作将：\n1. 删除并重建数据库（如已存在，所有数据将被清除）\n2. 创建全部业务表（Prisma 迁移）\n3. 写入预设基础数据（Seed）\n\n⚠️ 此操作不可逆，请确认远程 MySQL 服务器已就绪。\n\n请输入数据库名「${dbConfig.value.dbname}」以确认：`,
+      `即将初始化数据库：\n\n远程主机: ${dbConfig.value.host}:${dbConfig.value.port}\n数据库名: ${dbConfig.value.dbname}\n用户名: ${dbConfig.value.username}\n首次管理员: ${initialAdmin.value.username}\n\n此操作将：\n1. 删除并重建数据库（如已存在，所有数据将被清除）\n2. 创建全部业务表（Prisma 迁移）\n3. 创建首次管理员，不写入业务或演示数据\n\n⚠️ 此操作不可逆，请确认远程 MySQL 服务器已就绪。\n\n请输入数据库名「${dbConfig.value.dbname}」以确认：`,
       '危险操作确认',
       {
         type: 'error',
@@ -107,13 +122,14 @@ const handleInitDatabase = async () => {
 
   initializing.value = true
   try {
-    // 先保存配置（确保密码已加密存储 + JWT 密钥已保存）
+    // 先保存配置（确保平台名称、密码和 JWT 密钥已保存）
+    await SaveAppName(appName.value)
     await SaveDatabaseConfig(dbConfig.value.host, dbConfig.value.port, dbConfig.value.username, dbConfig.value.password, dbConfig.value.dbname)
     await SaveJWTSecret(jwtSecret.value)
-    const result = await InitDatabase()
+    const result = await InitDatabase(initialAdmin.value.username, initialAdmin.value.password)
     if (result.includes('成功')) {
       await ElMessageBox.alert(
-        '数据库初始化成功！\n\n初始登录账号：\n  用户名：admin\n  密码：123456\n\n请登录后及时修改密码。',
+        `数据库初始化成功！\n\n已创建全部表结构和首次管理员。\n登录账号：${initialAdmin.value.username}\n请使用刚才填写的密码登录，并在首次登录后及时修改密码。`,
         '初始化成功',
         { type: 'success', confirmButtonText: '知道了' }
       )
@@ -147,7 +163,7 @@ const handleUpgradeDatabase = async () => {
   // 二次确认
   try {
     await ElMessageBox.confirm(
-      `即将升级数据库：\n\n远程主机: ${dbConfig.value.host}:${dbConfig.value.port}\n数据库名: ${dbConfig.value.dbname}\n\n此操作将：\n1. 执行 Prisma 迁移部署（仅更新表结构）\n2. 不执行 Seed，不清空数据\n\n如果没有待执行的迁移，将提示「数据库已是最新版本」。`,
+      `即将升级数据库：\n\n远程主机: ${dbConfig.value.host}:${dbConfig.value.port}\n数据库名: ${dbConfig.value.dbname}\n\n此操作将：\n1. 执行 Prisma 迁移部署（仅更新表结构）\n2. 不导入预置数据，不清空数据\n\n如果没有待执行的迁移，将提示「数据库已是最新版本」。`,
       '确认升级数据库',
       { type: 'warning', confirmButtonText: '确定升级', cancelButtonText: '取消' }
     )
@@ -164,6 +180,42 @@ const handleUpgradeDatabase = async () => {
     await refreshDbStatus()
   } catch (e) { ElMessage.error('升级失败: ' + e) }
   upgrading.value = false
+}
+
+const handleResetAdminPassword = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `即将重置管理员「${initialAdmin.value.username}」的登录密码。\n\n不会重建数据库，不会删除业务数据，也不会影响其他用户。\n\n请确认“初始密码”输入框中已填写新的临时密码。`,
+      '重置管理员密码',
+      { type: 'warning', confirmButtonText: '确认重置', cancelButtonText: '取消' }
+    )
+  } catch { return }
+
+  resettingAdmin.value = true
+  try {
+    const result = await ResetAdminPassword(initialAdmin.value.username, initialAdmin.value.password)
+    if (result.includes('成功')) ElMessage.success(result)
+    else ElMessage.error(result)
+  } catch (e) { ElMessage.error('重置失败: ' + e) }
+  resettingAdmin.value = false
+}
+
+const handleProvisionInitialAdmin = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `将检查数据库是否还没有任何用户。\n\n若没有用户，会创建首次管理员「${initialAdmin.value.username}」。\n若已有用户，则不会修改账号、密码或业务数据。\n\n不会删除数据库。`,
+      '补建首次管理员',
+      { type: 'info', confirmButtonText: '确认补建', cancelButtonText: '取消' }
+    )
+  } catch { return }
+
+  provisioningAdmin.value = true
+  try {
+    const result = await ProvisionInitialAdmin(initialAdmin.value.username, initialAdmin.value.password)
+    if (result.includes('完成')) ElMessage.success(result)
+    else ElMessage.error(result)
+  } catch (e) { ElMessage.error('补建失败: ' + e) }
+  provisioningAdmin.value = false
 }
 
 const handleSavePort = async () => {
@@ -199,14 +251,16 @@ const handleClearLogs = () => { logs.value = [] }
 <template>
   <div class="app-container">
     <div class="app-header">
-      <h1>泰兴超市信息部综合管理平台 - 配置工具</h1>
-      <span class="version">V0.01</span>
+      <h1>{{ configToolTitle }}</h1>
     </div>
 
     <el-tabs v-model="activeTab" class="app-tabs">
       <!-- 数据库配置 -->
       <el-tab-pane label="数据库配置" name="database">
         <el-form :model="dbConfig" label-width="100px" class="config-form">
+          <el-form-item label="平台名称">
+            <el-input v-model="appName" :placeholder="defaultAppName" />
+          </el-form-item>
           <el-form-item label="数据库主机">
             <el-input v-model="dbConfig.host" placeholder="请填写远程 MySQL 服务器 IP 或域名" />
           </el-form-item>
@@ -217,14 +271,27 @@ const handleClearLogs = () => { logs.value = [] }
             <el-input v-model="dbConfig.username" placeholder="root" />
           </el-form-item>
           <el-form-item label="密码">
-            <el-input v-model="dbConfig.password" type="password" show-password placeholder="请输入数据库密码（加密保存到本机）" />
+            <el-input
+              v-model="dbConfig.password"
+              type="password"
+              show-password
+              :placeholder="passwordConfigured ? '密码已保存；如需更换请输入新密码' : '请输入数据库密码（加密保存到本机）'"
+            />
+            <el-text v-if="passwordConfigured" type="info" size="small">
+              密码已使用 Windows 加密保存，为安全起见不会回显；留空不会覆盖已保存的密码。
+            </el-text>
           </el-form-item>
           <el-form-item label="JWT密钥">
-            <el-input v-model="jwtSecret" type="password" show-password placeholder="请输入JWT密钥（用于登录认证）" />
+            <el-input v-model="jwtSecret" type="password" show-password placeholder="用于登录认证；可点击右侧随机生成">
+              <template #append>
+                <el-button @click="handleGenerateJWTSecret">随机生成</el-button>
+              </template>
+            </el-input>
           </el-form-item>
           <el-form-item label="数据库名">
             <el-input v-model="dbConfig.dbname" placeholder="it_imp" />
           </el-form-item>
+          <InitialAdminConfig v-model="initialAdmin" />
           <el-form-item>
             <el-button type="primary" @click="handleSaveDbConfig">保存配置</el-button>
             <el-button type="success" @click="handleTestConnection" :loading="testing">测试连接</el-button>
@@ -239,29 +306,25 @@ const handleClearLogs = () => { logs.value = [] }
               <el-button size="small" text @click="refreshDbStatus">刷新状态</el-button>
             </div>
           </template>
-          <el-descriptions :column="1" border size="small">
-            <el-descriptions-item label="数据库状态">
-              <el-tag :type="statusTagType(dbStatus.status)" size="small">{{ statusLabel(dbStatus.status) }}</el-tag>
-              <span class="db-status-msg">{{ dbStatus.message }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="已执行迁移">{{ dbStatus.migrationCount }} 个</el-descriptions-item>
-            <el-descriptions-item label="最近初始化时间">{{ dbStatus.lastInitTime || '尚未初始化' }}</el-descriptions-item>
-            <el-descriptions-item label="最近升级时间">{{ dbStatus.lastUpgradeTime || '尚未升级' }}</el-descriptions-item>
-          </el-descriptions>
+          <DatabaseStatusSummary :status="dbStatus" />
           <div class="db-actions">
             <el-button type="warning" @click="handleInitDatabase" :loading="initializing" :disabled="!dbConfig.host">初始化数据库</el-button>
             <el-button type="info" @click="handleUpgradeDatabase" :loading="upgrading" :disabled="!dbConfig.host">升级数据库</el-button>
+            <el-button type="primary" plain @click="handleProvisionInitialAdmin" :loading="provisioningAdmin" :disabled="dbStatus.status !== 'initialized'">补建首次管理员</el-button>
+            <el-button type="danger" plain @click="handleResetAdminPassword" :loading="resettingAdmin" :disabled="!dbConfig.host">重置管理员密码</el-button>
           </div>
         </el-card>
 
         <el-alert title="使用说明" type="info" :closable="false" show-icon>
           <ol class="usage-steps">
-            <li>填写远程 MySQL 服务器连接信息（主机、端口、用户名、密码、数据库名）和 JWT 密钥</li>
+            <li>填写平台名称、远程 MySQL 服务器连接信息（主机、端口、用户名、密码、数据库名）和 JWT 密钥</li>
             <li>点击「保存配置」— 密码使用 Windows 加密方式保存在本机，不写入明文文件</li>
             <li>JWT 密钥用于登录认证，未配置时服务无法启动</li>
             <li>点击「测试连接」确认能连上远程 MySQL 服务器</li>
-            <li>首次部署点击「初始化数据库」— 重建数据库、创建表结构、写入预设数据（会清除已有数据）</li>
-            <li>后续版本更新点击「升级数据库」— 仅更新表结构，不执行 Seed</li>
+            <li>首次部署点击「初始化数据库」— 重建数据库、创建表结构和首次管理员，不写入业务或演示数据（会清除已有数据）</li>
+            <li>后续版本更新点击「升级数据库」— 仅更新表结构，不导入预置数据</li>
+            <li>旧环境已建表但没有用户时，点击「补建首次管理员」；它不删库、不升级、不覆盖已有账号</li>
+            <li>忘记唯一管理员密码时，在“初始密码”填写新临时密码后点击「重置管理员密码」；数据库必须可连接，该操作不会清空数据</li>
             <li>数据库密码不会出现在日志中</li>
           </ol>
         </el-alert>
@@ -315,7 +378,6 @@ const handleClearLogs = () => { logs.value = [] }
 .config-form { max-width: 480px; margin-bottom: 20px; }
 .db-status-card { max-width: 580px; margin-bottom: 20px; }
 .db-status-header { display: flex; align-items: center; justify-content: space-between; font-weight: 600; color: var(--text-primary); }
-.db-status-msg { margin-left: 8px; font-size: var(--font-size-small); color: var(--text-secondary); }
 .db-actions { margin-top: 12px; display: flex; gap: 12px; }
 .usage-steps { margin: 5px 0; padding-left: 20px; line-height: 1.8; }
 .logs-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }

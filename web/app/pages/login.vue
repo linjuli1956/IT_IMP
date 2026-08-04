@@ -3,8 +3,8 @@
     <div class="login-card">
       <div class="login-header">
         <el-icon size="40" color="var(--color-primary)"><Coin /></el-icon>
-        <h1 class="login-title">泰兴超市信息部</h1>
-        <p class="login-subtitle">综合管理平台 V0.01</p>
+        <h1 class="login-title">{{ appName }}</h1>
+        <p class="login-subtitle">{{ version }}</p>
       </div>
 
       <el-form
@@ -47,7 +47,7 @@
       </el-form>
 
       <div class="login-footer">
-        © 2026 泰兴超市信息部
+        © 2026 {{ appName }}
       </div>
     </div>
   </div>
@@ -63,6 +63,7 @@ definePageMeta({ layout: false })
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const { appName, version } = useAppBrand()
 
 const loginForm = reactive({
   username: '',

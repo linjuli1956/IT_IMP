@@ -30,6 +30,7 @@ COPY --from=builder /app/web/node_modules ./node_modules
 COPY --from=builder /app/web/package.json ./package.json
 COPY --from=builder /app/web/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/web/prisma ./prisma
+COPY --from=builder /app/web/scripts ./scripts
 
 RUN mkdir -p \
     /app/data/uploads/invoices \

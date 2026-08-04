@@ -1,19 +1,28 @@
-# README
+# Windows 桌面端
 
-## About
+`desktop/` 是 IT_IMP 的 Wails 桌面端配置工具，负责：
 
-This is the official Wails Vue template.
+- 保存远程 MySQL 连接配置；
+- 测试数据库连接；
+- 创建空数据库并执行 Prisma 迁移；
+- 在空用户表中创建可配置的首次管理员（不导入业务或演示数据）；
+- 执行后续数据库升级迁移；
+- 在数据库可连接时重置指定管理员密码，不清空数据；
+- 启动和停止本地 Web 服务。
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+## 开发运行
 
-## Live Development
+```powershell
+cd desktop
+wails doctor
+wails dev
+```
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## 构建 EXE
 
-## Building
+```powershell
+cd desktop
+wails build
+```
 
-To build a redistributable, production mode package, use `wails build`.
+正式发布时，不能只复制 EXE，还需要使用发布脚本准备同目录的 `web/` 和 `bun/` 目录。详见项目根目录 README。

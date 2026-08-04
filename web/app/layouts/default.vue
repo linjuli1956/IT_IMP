@@ -4,7 +4,7 @@
     <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
       <div class="logo">
         <el-icon size="24" color="var(--color-primary)"><Coin /></el-icon>
-        <span v-if="!isCollapse">泰兴超市信息部</span>
+        <span v-if="!isCollapse">{{ appName }}</span>
       </div>
       <el-menu
         :default-active="activeMenu"
@@ -183,6 +183,7 @@ import { useStoreData } from '~/composables/useStoreData'
 
 const route = useRoute()
 const api = useApi()
+const { appName } = useAppBrand()
 const isCollapse = ref(false)
 const { fetchStores } = useStoreData()
 

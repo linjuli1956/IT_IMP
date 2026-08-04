@@ -5,6 +5,7 @@ export namespace main {
 	    port: number;
 	    username: string;
 	    encryptedPassword: string;
+	    passwordConfigured?: boolean;
 	    dbname: string;
 	
 	    static createFrom(source: any = {}) {
@@ -17,10 +18,12 @@ export namespace main {
 	        this.port = source["port"];
 	        this.username = source["username"];
 	        this.encryptedPassword = source["encryptedPassword"];
+	        this.passwordConfigured = source["passwordConfigured"];
 	        this.dbname = source["dbname"];
 	    }
 	}
 	export class AppConfig {
+	    appName: string;
 	    database: DatabaseConfig;
 	    webPort: number;
 	    jwtSecret: string;
@@ -33,6 +36,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appName = source["appName"];
 	        this.database = this.convertValues(source["database"], DatabaseConfig);
 	        this.webPort = source["webPort"];
 	        this.jwtSecret = source["jwtSecret"];

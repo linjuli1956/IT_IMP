@@ -25,6 +25,7 @@
     "exceljs": "^4.4.0",
     "jsonwebtoken": "^9.0.3",
     "jszip": "^3.10.1",
+    "mariadb": "^3.4.5",
     "nuxt": "^4.5.0",
     "pdfjs-dist": "^4.10.38",
     "pinia": "^4.0.2",

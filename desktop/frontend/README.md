@@ -1,8 +1,13 @@
-# Vue 3 + Vite
+# 桌面端前端
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs,
-check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+这是 IT_IMP Windows 配置工具使用的 Vue 3 + Vite 前端界面。
 
-## Recommended IDE Setup
+## 本地开发
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
+在 `desktop/` 目录执行：
+
+```powershell
+wails dev
+```
+
+日常业务页面位于根目录的 `web/`，这里的前端只负责桌面端数据库配置和服务控制界面。

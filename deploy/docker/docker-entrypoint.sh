@@ -3,6 +3,20 @@ set -e
 
 cd /app/web
 
+read_required_secret() {
+  secret_file="$1"
+  secret_name="$2"
+  if [ -z "$secret_file" ] || [ ! -f "$secret_file" ]; then
+    echo "[entrypoint] ERROR: Docker Secret $secret_name is missing."
+    exit 1
+  fi
+  cat "$secret_file"
+}
+
+export DATABASE_PASSWORD="$(read_required_secret "${DATABASE_PASSWORD_FILE:-}" "DATABASE_PASSWORD")"
+export JWT_SECRET="$(read_required_secret "${JWT_SECRET_FILE:-}" "JWT_SECRET")"
+export DATABASE_URL="mysql://${DATABASE_USER}:$(node -p 'encodeURIComponent(process.env.DATABASE_PASSWORD)')@${DATABASE_HOST}:${DATABASE_PORT:-3306}/${DATABASE_NAME}"
+
 echo "[entrypoint] IT_IMP web service starting"
 echo "[entrypoint] Waiting for MySQL at ${DATABASE_HOST}:${DATABASE_PORT}..."
 
@@ -44,7 +58,8 @@ fi
 echo "[entrypoint] Running Prisma migrations..."
 npx prisma migrate deploy
 
-echo "[entrypoint] No seed data configured; database remains empty after migrations."
+echo "[entrypoint] Creating initial administrator when no users exist..."
+node scripts/bootstrap-admin.mjs
 
 echo "[entrypoint] Starting web server on port ${PORT:-3000}..."
 exec node .output/server/index.mjs
