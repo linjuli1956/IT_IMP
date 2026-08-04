@@ -3,16 +3,16 @@ set -e
 
 cd /app/web
 
-# 基础 Compose 只使用 .env；数据库密码默认复用 MySQL root 密码。
-# 如未来接入独立数据库用户，可在 .env 显式设置 DATABASE_PASSWORD 覆盖它。
+# Docker Compose 将数据库密码直接传入容器；默认复用 MySQL root 密码。
+# 如未来接入独立数据库用户，可显式设置 DATABASE_PASSWORD 覆盖它。
 export DATABASE_PASSWORD="${DATABASE_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}"
 if [ -z "$DATABASE_PASSWORD" ]; then
-  echo "[entrypoint] ERROR: DATABASE_PASSWORD or MYSQL_ROOT_PASSWORD is missing in .env."
+  echo "[entrypoint] ERROR: DATABASE_PASSWORD or MYSQL_ROOT_PASSWORD is missing."
   exit 1
 fi
 
 if [ -z "${JWT_SECRET:-}" ]; then
-  echo "[entrypoint] ERROR: JWT_SECRET is missing in .env."
+  echo "[entrypoint] ERROR: JWT_SECRET is missing."
   exit 1
 fi
 

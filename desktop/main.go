@@ -8,6 +8,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
+// BuildVersion 在发布构建时由 build-release.ps1 从根目录 VERSION 注入。
+var BuildVersion = "20260805"
+
 //go:embed all:frontend/dist
 var assets embed.FS
 
@@ -17,7 +20,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "综合管理平台-配置工具V0.01",
+		Title:  "综合管理平台-配置工具 " + BuildVersion,
 		Width:  900,
 		Height: 680,
 		AssetServer: &assetserver.Options{

@@ -6,9 +6,18 @@ $ErrorActionPreference = "Stop"
 $desktopDirectory = Split-Path -Parent $PSScriptRoot
 $webDirectory = Join-Path $desktopDirectory "web"
 $desktopSourceDirectory = Join-Path $desktopDirectory "desktop"
+$versionFile = Join-Path $desktopDirectory "VERSION"
+
+if (-not (Test-Path -LiteralPath $versionFile)) {
+    throw "Version file was not found: $versionFile"
+}
+$releaseVersion = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+if ($releaseVersion -notmatch '^\d{8}$') {
+    throw "VERSION must use YYYYMMDD format, for example 20260805. Current value: $releaseVersion"
+}
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $desktopSourceDirectory "build\release\IT_IMP-v0.0001"
+    $OutputDirectory = Join-Path $desktopSourceDirectory ("build\release\IT_IMP-" + $releaseVersion)
 }
 
 function Find-BunExecutable {
@@ -29,6 +38,33 @@ function Find-BunExecutable {
     throw "Bun was not found. Install Bun for Windows or set the BUN_EXE environment variable."
 }
 
+function Ensure-GoAvailable {
+    if (Get-Command go.exe -ErrorAction SilentlyContinue) {
+        return
+    }
+    $defaultGoBin = "C:\Program Files\Go\bin"
+    if (Test-Path -LiteralPath (Join-Path $defaultGoBin "go.exe")) {
+        $env:PATH = $defaultGoBin + ";" + $env:PATH
+        return
+    }
+    throw "Go was not found. Install Go for Windows and ensure go.exe is available."
+}
+
+function Find-WailsExecutable {
+    $candidates = @(
+        (Get-Command wails.exe -ErrorAction SilentlyContinue | ForEach-Object Source),
+        (Join-Path $env:USERPROFILE "go\bin\wails.exe")
+    )
+    foreach ($candidate in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate)) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+    throw "Wails was not found. Install Wails with: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0"
+}
+
+$null = Ensure-GoAvailable
+$wailsExecutable = Find-WailsExecutable
 $bunExecutable = Find-BunExecutable
 $stagedBunExecutable = Join-Path $env:TEMP ("it-imp-bun-{0}.exe" -f $PID)
 Copy-Item -LiteralPath $bunExecutable -Destination $stagedBunExecutable -Force
@@ -43,7 +79,7 @@ npm.cmd --prefix $webDirectory run build
 Write-Host "[3/5] Building Wails EXE"
 Push-Location $desktopSourceDirectory
 try {
-    wails build -clean
+    & $wailsExecutable build -clean -ldflags ("-X main.BuildVersion=" + $releaseVersion)
 }
 finally {
     Pop-Location

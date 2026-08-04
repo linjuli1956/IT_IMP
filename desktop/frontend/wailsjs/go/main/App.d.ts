@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function GenerateJWTSecret():Promise<string>;
 
+export function GetBuildVersion():Promise<string>;
+
 export function GetConfig():Promise<main.AppConfig>;
 
 export function GetDatabaseStatus():Promise<main.DatabaseStatus>;

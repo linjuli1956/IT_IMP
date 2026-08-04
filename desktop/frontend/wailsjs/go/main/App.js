@@ -6,6 +6,10 @@ export function GenerateJWTSecret() {
   return window['go']['main']['App']['GenerateJWTSecret']();
 }
 
+export function GetBuildVersion() {
+  return window['go']['main']['App']['GetBuildVersion']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }

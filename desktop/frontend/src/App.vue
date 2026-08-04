@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  GenerateJWTSecret, GetConfig, SaveAppName, SaveDatabaseConfig, SaveWebPort, SaveJWTSecret,
+  GenerateJWTSecret, GetBuildVersion, GetConfig, SaveAppName, SaveDatabaseConfig, SaveWebPort, SaveJWTSecret,
   TestConnection, InitDatabase, UpgradeDatabase, GetDatabaseStatus,
   ProvisionInitialAdmin, ResetAdminPassword, StartService, StopService, GetServiceStatus
 } from '../wailsjs/go/main/App'
@@ -14,7 +14,8 @@ const dbConfig = ref({ host: '', port: 3306, username: 'root', password: '', dbn
 const passwordConfigured = ref(false)
 const defaultAppName = '综合管理平台'
 const appName = ref(defaultAppName)
-const configToolTitle = computed(() => `${appName.value.trim() || defaultAppName}-配置工具V0.01`)
+const configToolVersion = shallowRef('20260805')
+const configToolTitle = computed(() => `${appName.value.trim() || defaultAppName}-配置工具 ${configToolVersion.value}`)
 const jwtSecret = ref('')
 const initialAdmin = ref({ username: 'admin', password: '123456' })
 const webPort = ref(3000)
@@ -33,6 +34,7 @@ const dbStatus = ref({ status: 'uninitialized', migrationCount: 0, lastInitTime:
 
 onMounted(async () => {
   try {
+    configToolVersion.value = await GetBuildVersion()
     const config = await GetConfig()
     if (config?.appName) appName.value = config.appName
     if (config?.database) {

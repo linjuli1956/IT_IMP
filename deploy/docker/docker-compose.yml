@@ -1,21 +1,77 @@
-# IT_IMP Docker Compose
+# IT_IMP Docker Compose（镜像部署版）
 #
-# 正式发布版：直接拉取 GitHub Container Registry 镜像，不需要源码或本机构建。
-# 使用前请复制 .env.example 为 .env，并只在 .env 中修改可选部署参数。
+# 使用方法：只需编辑本文件顶部的“部署配置”，然后执行：docker compose up -d
+# 不需要 .env、不需要下载源码、不需要在服务器构建镜像。
+#
+# 固定日期版本：将 web.image 中的 latest 改为例如 20260805。
+
+x-it-imp-settings:
+  # ======== 部署配置：请至少修改三项密码/密钥 ========
+  mysql-root-password: &mysql-root-password "CHANGE_ME_MYSQL_ROOT_PASSWORD"
+  jwt-secret: &jwt-secret "CHANGE_ME_JWT_SECRET"
+  initial-admin-username: &initial-admin-username "admin"
+  initial-admin-password: &initial-admin-password "CHANGE_ME_INITIAL_ADMIN_PASSWORD"
+
+  # 平台与时区
+  app-name: &app-name "综合管理平台"
+  timezone: &timezone "Asia/Shanghai"
+  mysql-command: &mysql-command "--default-time-zone=+08:00"
+
+  # 对外端口：左侧为宿主机/NAS 端口，右侧为容器端口。
+  web-port: &web-port "31956"
+  mysql-port: &mysql-port "3307"
+
+  # 数据目录：NAS 用户可改为绝对路径，例如：
+  # /vol1/1000/docker/IT_IMP_docker/data/mysql
+  # /vol1/1000/docker/IT_IMP_docker/data/app
+  mysql-data-dir: &mysql-data-dir "./data/mysql"
+  app-data-dir: &app-data-dir "./data/app"
 
 services:
-  db:
-    image: ${MYSQL_IMAGE:-mysql:8.0}
-    restart: unless-stopped
-    env_file:
-      - .env
+  # 启动前阻止公开示例密码被误用于实际部署。
+  config-check:
+    image: busybox:1.36
+    restart: "no"
     environment:
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?请先在 .env 中设置 MYSQL_ROOT_PASSWORD}"
-    command: "--default-time-zone=${MYSQL_TIME_ZONE:-+08:00}"
-    volumes:
-      - "${DATA_DIR:-./data}/mysql:/var/lib/mysql"
+      MYSQL_ROOT_PASSWORD: *mysql-root-password
+      JWT_SECRET: *jwt-secret
+      INITIAL_ADMIN_PASSWORD: *initial-admin-password
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        for name in MYSQL_ROOT_PASSWORD JWT_SECRET INITIAL_ADMIN_PASSWORD; do
+          eval "value=\${$name}"
+          case "$value" in
+            ""|CHANGE_ME_*)
+              echo "配置错误：请在 docker-compose.yml 顶部设置 $name"
+              exit 1
+              ;;
+          esac
+        done
+        echo "部署配置检查通过。"
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    depends_on:
+      config-check:
+        condition: service_completed_successfully
+    environment:
+      MYSQL_ROOT_PASSWORD: *mysql-root-password
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_DATABASE: it_imp
+      TZ: *timezone
+    command: *mysql-command
     ports:
-      - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
+      - target: 3306
+        published: *mysql-port
+        host_ip: 0.0.0.0
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: *mysql-data-dir
+        target: /var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
       interval: 5s
@@ -24,14 +80,31 @@ services:
       start_period: 60s
 
   web:
-    image: ${IT_IMP_IMAGE:-ghcr.io/linjuli1956/it-imp-web:latest}
+    image: linjuli2026/it-imp-web:latest
     restart: unless-stopped
     depends_on:
+      config-check:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
-    env_file:
-      - .env
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: "3306"
+      DATABASE_USER: root
+      DATABASE_NAME: it_imp
+      MYSQL_ROOT_PASSWORD: *mysql-root-password
+      JWT_SECRET: *jwt-secret
+      INITIAL_ADMIN_USERNAME: *initial-admin-username
+      INITIAL_ADMIN_PASSWORD: *initial-admin-password
+      NUXT_PUBLIC_APP_NAME: *app-name
+      PORT: "3000"
+      TZ: *timezone
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - target: 3000
+        published: *web-port
+        host_ip: 0.0.0.0
+        protocol: tcp
     volumes:
-      - "${DATA_DIR:-./data}/app:/app/data"
+      - type: bind
+        source: *app-data-dir
+        target: /app/data

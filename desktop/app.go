@@ -111,6 +111,11 @@ func (a *App) GetConfig() AppConfig {
 	return cfg
 }
 
+// GetBuildVersion 返回当前 EXE 的编译版本，供桌面界面显示。
+func (a *App) GetBuildVersion() string {
+	return BuildVersion
+}
+
 // SaveDatabaseConfig 保存数据库配置（密码使用 DPAPI 加密）
 func (a *App) SaveDatabaseConfig(host string, port int, username, password, dbname string) error {
 	a.config.Database.Host = host
@@ -163,7 +168,7 @@ func (a *App) GenerateJWTSecret() (string, error) {
 }
 
 func (a *App) configToolTitle() string {
-	return fmt.Sprintf("%s-配置工具V0.01", a.config.AppName)
+	return fmt.Sprintf("%s-配置工具 %s", a.config.AppName, BuildVersion)
 }
 
 // getDecryptedPassword 解密数据库密码供内部使用
