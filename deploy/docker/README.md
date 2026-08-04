@@ -31,7 +31,7 @@ docker compose --env-file .env.docker down
 docker compose --env-file .env.docker up -d --build
 ```
 
-数据库文件保存在 `deploy/docker/data/mysql`，上传文件和日志保存在 `deploy/docker/data/app`。
+数据库文件保存在 `deploy/docker/data/mysql`，上传文件和日志保存在 `deploy/docker/data/app`。镜像不会自动写入演示数据，首次启动完成迁移后数据库保持空白。
 
 修改 `web/` 下的业务源码后，重新执行 `up -d --build` 即可生成新的镜像。
 

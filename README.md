@@ -61,7 +61,7 @@ npm.cmd --prefix web test
 
 如果 npm 11 提示阻止依赖安装脚本，请仍然显式执行 `npx prisma generate`；它会生成本地开发和构建所需的 Prisma 客户端。
 
-测试需要先按 `web/.env.example` 配置环境。演示数据使用 `web/prisma/seed.demo.ts`；`web/prisma/seed.ts` 仅用于内部真实数据，不应提交。
+测试需要先按 `web/.env.example` 配置环境。仓库不预置任何业务数据；首次部署只执行 Prisma migrations，数据库保持空白，业务数据由部署者自行录入。
 
 ## 安全与许可证
 

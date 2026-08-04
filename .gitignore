@@ -73,9 +73,9 @@ desktop.ini
 docs/副本*.xlsx
 docs/*.pdf
 
-# ---- 内部真实数据 Seed（公开仓库不包含）----
+# ---- 数据库 Seed（公开仓库不预置业务数据）----
 web/prisma/seed.ts
-!web/prisma/seed.demo.ts
+web/prisma/seed.demo.ts
 
 # ---- 上传文件 / OCR 临时文件 / 导出文件 ----
 web/public/mock-invoices/

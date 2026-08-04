@@ -44,10 +44,7 @@ fi
 echo "[entrypoint] Running Prisma migrations..."
 npx prisma migrate deploy
 
-if [ "${SEED_MODE:-demo}" = "demo" ]; then
-  echo "[entrypoint] Running demo seed..."
-  npx prisma db seed || echo "[entrypoint] Demo seed skipped or failed."
-fi
+echo "[entrypoint] No seed data configured; database remains empty after migrations."
 
 echo "[entrypoint] Starting web server on port ${PORT:-3000}..."
 exec node .output/server/index.mjs
