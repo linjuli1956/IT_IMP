@@ -14,11 +14,11 @@ docker compose up -d
 
 首次只需在 `docker-compose.yml` 顶部的“部署配置”区域修改三项：
 
-- `MYSQL_ROOT_PASSWORD`：MySQL root 密码；
-- `JWT_SECRET`：用于登录认证的长随机密钥；
-- `INITIAL_ADMIN_PASSWORD`：首次管理员密码。
+- `mysql-root-password`：MySQL root 密码，例如 `MySql@2026#Secure`；
+- `jwt-secret`：用于登录认证的长随机密钥，例如 `JwtSecret@2026#IT_IMP`；
+- `initial-admin-password`：首次管理员密码，例如 `Admin@2026#Secure`。
 
-未修改公开占位值时，Compose 会在启动数据库前停止并提示配置错误。
+不要直接使用示例值。未修改 `CHANGE_ME_...` 占位值时，Compose 会在启动数据库前停止并提示配置错误。密码包含 `$` 时，在 Compose 中须写成 `$$`。
 
 ## 端口与数据目录
 
@@ -28,6 +28,8 @@ docker compose up -d
 Web：31956 -> 3000，访问 http://NAS_IP:31956
 MySQL：3307 -> 3306，局域网通过 NAS_IP:3307 以 root 登录
 ```
+
+`3307` 只用于 NAS 外部访问；Web 与 MySQL 在同一个 Docker 网络内，Web 固定连接 `db:3306`。不要把 `web.environment.DATABASE_PORT` 改为 `3307`，否则 Web 无法连接数据库。
 
 默认数据目录相对于 Compose 文件：
 
@@ -62,7 +64,7 @@ docker compose up -d
 
 ## 管理员密码恢复
 
-先在 Compose 顶部修改 `INITIAL_ADMIN_PASSWORD`，再执行：
+先在 Compose 顶部修改 `initial-admin-password`，再执行：
 
 ```bash
 docker compose run --rm --no-deps --entrypoint node web /app/web/scripts/bootstrap-admin.mjs --reset

@@ -1,34 +1,40 @@
-# IT_IMP Docker Compose（镜像部署版）
+# IT_IMP Docker Compose（Docker Hub 镜像部署）
 #
-# 使用方法：只需编辑本文件顶部的“部署配置”，然后执行：docker compose up -d
-# 不需要 .env、不需要下载源码、不需要在服务器构建镜像。
+# 使用方法：只需修改本文件顶部的“部署配置”，然后执行：docker compose up -d
+# 不需要 .env、不需要下载源码、不需要在 NAS 构建镜像。
 #
-# 固定日期版本：将 web.image 中的 latest 改为例如 20260805。
+# 服务说明：
+#   - config-check：一次性检查必填密钥，成功后显示 Exited 0 属正常现象。
+#   - db：MySQL 数据库，容器内部端口固定为 3306。
+#   - web：管理平台，容器内部端口固定为 3000。
+#
+# 固定日期版本：将 web.image 的 latest 改为例如 20260805。
 
 x-it-imp-settings:
-  # ======== 部署配置：请至少修改三项密码/密钥 ========
-  mysql-root-password: &mysql-root-password "CHANGE_ME_MYSQL_ROOT_PASSWORD"
-  jwt-secret: &jwt-secret "CHANGE_ME_JWT_SECRET"
-  initial-admin-username: &initial-admin-username "admin"
-  initial-admin-password: &initial-admin-password "CHANGE_ME_INITIAL_ADMIN_PASSWORD"
+  # ======== 必须修改：换成自己的强密码/密钥，不能使用示例值 ========
+  # 密码包含 $ 时，Compose 中须写成 $$；例如 A$B 应写为 A$$B。
+  mysql-root-password: &mysql-root-password "CHANGE_ME_MYSQL_ROOT_PASSWORD" # 例如: MySql@2026#Secure
+  jwt-secret: &jwt-secret "CHANGE_ME_JWT_SECRET"                             # 例如: JwtSecret@2026#IT_IMP
+  initial-admin-username: &initial-admin-username "admin"                    # 可修改初始管理员账号
+  initial-admin-password: &initial-admin-password "CHANGE_ME_INITIAL_ADMIN_PASSWORD" # 例如: Admin@2026#Secure
 
-  # 平台与时区
-  app-name: &app-name "综合管理平台"
+  # ======== 平台显示与时区 ========
+  app-name: &app-name "综合管理平台" # 浏览器页面显示的系统名称
   timezone: &timezone "Asia/Shanghai"
   mysql-command: &mysql-command "--default-time-zone=+08:00"
 
-  # 对外端口：左侧为宿主机/NAS 端口，右侧为容器端口。
-  web-port: &web-port "31956"
-  mysql-port: &mysql-port "3307"
+  # ======== NAS 对外端口：左边是 NAS/局域网端口，不是容器内部端口 ========
+  web-port: &web-port "31956"     # 浏览器访问：http://NAS_IP:31956
+  mysql-port: &mysql-port "3307"  # DBX 等外部工具连接：NAS_IP:3307
 
-  # 数据目录：NAS 用户可改为绝对路径，例如：
-  # /vol1/1000/docker/IT_IMP_docker/data/mysql
-  # /vol1/1000/docker/IT_IMP_docker/data/app
+  # ======== 数据持久化目录：请按 NAS 实际目录修改 ========
+  # 相对路径可写 ./data/mysql 与 ./data/app；NAS 推荐使用绝对路径。
+  # MySQL 数据库文件位于 mysql 目录；用户上传的 PDF 等应用文件位于 app 目录。
   mysql-data-dir: &mysql-data-dir "./data/mysql"
   app-data-dir: &app-data-dir "./data/app"
 
 services:
-  # 启动前阻止公开示例密码被误用于实际部署。
+  # 启动前阻止公开占位密钥误用于真实数据库；成功退出（Exited 0）表示检查通过。
   config-check:
     image: busybox:1.36
     restart: "no"
@@ -41,10 +47,10 @@ services:
       - -ec
       - |
         for name in MYSQL_ROOT_PASSWORD JWT_SECRET INITIAL_ADMIN_PASSWORD; do
-          eval "value=\${$name}"
-          case "$value" in
+          value="$$(printenv "$$name")"
+          case "$$value" in
             ""|CHANGE_ME_*)
-              echo "配置错误：请在 docker-compose.yml 顶部设置 $name"
+              echo "配置错误：请在 docker-compose.yml 顶部设置 $$name"
               exit 1
               ;;
           esac
@@ -59,11 +65,13 @@ services:
         condition: service_completed_successfully
     environment:
       MYSQL_ROOT_PASSWORD: *mysql-root-password
+      # 仅在空数据目录首次初始化时创建远程 root 权限；已有数据库不会自动改变。
       MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: it_imp
       TZ: *timezone
     command: *mysql-command
     ports:
+      # 外部 NAS_IP:3307 -> 容器内部 MySQL:3306
       - target: 3306
         published: *mysql-port
         host_ip: 0.0.0.0
@@ -80,6 +88,7 @@ services:
       start_period: 60s
 
   web:
+    # 默认自动跟随最新版；需要固定版本时改为 linjuli2026/it-imp-web:20260805。
     image: linjuli2026/it-imp-web:latest
     restart: unless-stopped
     depends_on:
@@ -88,6 +97,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      # 以下是 Docker 内部连接：必须保持 db:3306，不要改为 NAS_IP:3307。
       DATABASE_HOST: db
       DATABASE_PORT: "3306"
       DATABASE_USER: root
@@ -100,6 +110,7 @@ services:
       PORT: "3000"
       TZ: *timezone
     ports:
+      # 外部 NAS_IP:31956 -> 容器内部 Web:3000
       - target: 3000
         published: *web-port
         host_ip: 0.0.0.0

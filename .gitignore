@@ -40,8 +40,8 @@ data/logs/*
 
 # ---- 日志 ----
 *.log
-logs/
-!logs/.gitkeep
+/logs/
+!/logs/.gitkeep
 
 # ---- 环境变量与密钥 ----
 .env
