@@ -8,6 +8,8 @@
 
 用户直接拉取 Docker Hub 镜像，不需要下载源码或构建镜像：
 
+> [直接查看或下载完整的带注释 `docker-compose.yml`](deploy/docker/docker-compose.yml)。该文件是唯一的公开 Compose 部署示例，顶部含密码、端口、时区和 NAS 数据目录的中文说明与示例。
+
 ```bash
 mkdir -p /vol1/1000/docker/IT_IMP_docker
 cd /vol1/1000/docker/IT_IMP_docker

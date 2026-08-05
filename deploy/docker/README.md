@@ -2,6 +2,10 @@
 
 IT_IMP 采用单文件 Compose 部署：直接拉取 Docker Hub 镜像，不需要 `.env`、源码、Node.js 或本机构建。
 
+## 完整带注释 Compose
+
+请直接查看或下载仓库中的 [`docker-compose.yml`](docker-compose.yml)。它是唯一的公开部署示例，所有可修改项都带中文用途说明和同行示例；不要将个人密码、JWT 密钥或 NAS 的实际业务路径提交回 GitHub。
+
 ## 用户部署
 
 ```bash
