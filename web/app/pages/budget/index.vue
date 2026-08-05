@@ -2,6 +2,14 @@
   <div class="page-container">
     <PageHeader title="预算管理">
       <template #actions>
+        <el-button plain @click="handleDownloadTemplate">
+          <el-icon><Download /></el-icon>
+          下载模板
+        </el-button>
+        <el-button type="primary" plain @click="openImportDialog">
+          <el-icon><Upload /></el-icon>
+          导入数据
+        </el-button>
         <el-button type="primary" @click="handleAddDetail">
           <el-icon><Plus /></el-icon>
           新增明细
@@ -300,25 +308,64 @@
         <el-button type="primary" :loading="saving" @click="handleSaveDetail">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 预算 Excel 导入弹窗 -->
+    <el-dialog v-model="importDialogVisible" title="导入预算明细" width="580px" destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon class="import-alert">
+        <template #title>导入说明</template>
+        <div class="import-tips">
+          <p>1. 先点击「下载模板」获取标准模板，填写后保存为 xlsx 文件再上传。</p>
+          <p>2. 必填：财年、门店、运营商、费用类型；月费/年费留空按 0 处理。</p>
+          <p>3. 同一 财年+门店+运营商+费用类型 已存在时会自动跳过该行。</p>
+          <p>4. 存在填写错误的行时整批不导入，请根据错误提示修正后重新上传。</p>
+        </div>
+      </el-alert>
+
+      <DragUpload
+        ref="importUploadRef"
+        accept=".xlsx,.xls"
+        :max-count="1"
+        hint-text="将 xlsx 文件拖拽到此处，或点击选择"
+        sub-hint="支持 .XLSX / .XLS 格式，单文件，最大 5MB"
+        @files-change="handleImportFilesChange"
+      />
+
+      <el-alert v-if="importResult" :type="importResult.type" :closable="false" show-icon class="import-result">
+        <template #title>{{ importResult.title }}</template>
+        <div v-if="importResult.errors && importResult.errors.length > 0" class="import-errors">
+          <el-table :data="importResult.errors" size="small" border max-height="220">
+            <el-table-column prop="row" label="Excel 行号" width="110" align="center" />
+            <el-table-column prop="message" label="原因" min-width="200" />
+          </el-table>
+        </div>
+      </el-alert>
+
+      <template #footer>
+        <el-button @click="closeImportDialog">关闭</el-button>
+        <el-button type="primary" :loading="importing" :disabled="!importFile" @click="handleImportConfirm">开始导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Wallet, Money, DataLine, WarningFilled, CopyDocument, Download } from '@element-plus/icons-vue'
+import { Plus, Wallet, Money, DataLine, WarningFilled, CopyDocument, Download, Upload } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
+import DragUpload from '~/components/invoice/DragUpload.vue'
 import {
   useBudgetData, budgetCarriers, budgetFeeTypes,
   getFiscalYearMonths, getMonthLabel, formatFeeRange,
-  type BudgetDetail, type BudgetExecution,
+  type BudgetDetail, type BudgetExecution, type BudgetImportErrorItem,
 } from '~/composables/useBudgetData'
+import { getApiErrorMessage } from '~/composables/useApi'
 import { useStoreData } from '~/composables/useStoreData'
 
 const {
   budgetDetails, budgetExecutions, loading, fiscalYears,
   fetchDetails, fetchExecutions,
   getDetailStores, getSummaryMatrix, getMonthBreakdown, generateNextFiscalYear,
-  addDetail, updateDetail, deleteDetail,
+  addDetail, updateDetail, deleteDetail, downloadBudgetTemplate, importBudget,
 } = useBudgetData()
 const { storeOptions } = useStoreData()
 
@@ -514,6 +561,70 @@ function handleDeleteDetail(row: BudgetDetail) {
     await deleteDetail(row.id)
     ElMessage.success('删除成功')
   }).catch(() => {})
+}
+
+// === 预算 Excel 导入 ===
+const importDialogVisible = ref(false)
+const importing = ref(false)
+const importFile = ref<File | null>(null)
+const importUploadRef = ref()
+const importResult = ref<{
+  type: 'success' | 'error'
+  title: string
+  errors: BudgetImportErrorItem[]
+} | null>(null)
+
+function openImportDialog() {
+  importDialogVisible.value = true
+  importResult.value = null
+  importFile.value = null
+}
+
+function closeImportDialog() {
+  importDialogVisible.value = false
+  importResult.value = null
+  importFile.value = null
+  importUploadRef.value?.clear()
+}
+
+async function handleDownloadTemplate() {
+  try {
+    await downloadBudgetTemplate()
+    ElMessage.success('模板已下载，请填写后保存为 xlsx 再导入')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('模板下载失败')
+  }
+}
+
+function handleImportFilesChange(files: { raw?: File }[]) {
+  importFile.value = files[0]?.raw ?? null
+  importResult.value = null
+}
+
+async function handleImportConfirm() {
+  if (!importFile.value) return
+  importing.value = true
+  importResult.value = null
+  try {
+    const { count, skipped } = await importBudget(importFile.value)
+    importResult.value = {
+      type: 'success',
+      title: skipped > 0 ? `导入成功 ${count} 条，跳过重复 ${skipped} 条` : `导入成功 ${count} 条`,
+      errors: [],
+    }
+    importFile.value = null
+    importUploadRef.value?.clear()
+  } catch (error: any) {
+    const errors: BudgetImportErrorItem[] = error?.response?._data?.errors || error?.data?.errors || []
+    importResult.value = {
+      type: 'error',
+      title: getApiErrorMessage(error) || '导入失败',
+      errors,
+    }
+  } finally {
+    importing.value = false
+  }
 }
 
 // 复制明细：打开编辑弹窗，预填被复制项数据（ID=0）
@@ -772,4 +883,10 @@ async function handleExportExcel() {
 /* 执行对比 tooltip */
 .exec-breakdown { min-width: 220px; max-width: 320px; }
 .exec-breakdown .text-over { color: #F89898; }
+
+/* 预算 Excel 导入弹窗 */
+.import-alert { margin-bottom: var(--spacing-card); }
+.import-tips { font-size: var(--font-size-mini); line-height: 1.8; }
+.import-result { margin-top: var(--spacing-card); }
+.import-errors { margin-top: var(--spacing-sm); }
 </style>

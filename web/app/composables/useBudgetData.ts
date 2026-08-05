@@ -5,8 +5,14 @@
 
 import { useApi, getApiErrorMessage } from './useApi'
 import { ElMessage } from 'element-plus'
+import ExcelJS from 'exceljs'
 import type { BudgetDetail, BudgetExecution } from '~/types/budget'
 export type { BudgetDetail, BudgetExecution }
+
+/** 预算导入模板列（与后端 web/server/utils/budget-import.ts 的表头保持一致） */
+export const BUDGET_TEMPLATE_COLUMNS = [
+  '财年', '门店', '运营商', '费用类型', '月费(元)', '年费(元)', '费用范围', '宽带类型', '缴费方式', '备注',
+]
 
 // 运营商选项
 export const budgetCarriers = ['电信', '移动', '联通', '其他']
@@ -124,6 +130,64 @@ async function deleteDetail(id: number) {
   await fetchDetails()
 }
 
+/** 导入失败时后端返回的错误明细（含 Excel 行号与原因） */
+export interface BudgetImportErrorItem {
+  row: number
+  message: string
+}
+
+/** 下载预算明细导入模板（xlsx）：表头加粗底色、关键列下拉与格式批注 */
+async function downloadBudgetTemplate() {
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('预算模板')
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
+
+  const headerRow = ws.addRow(BUDGET_TEMPLATE_COLUMNS)
+  headerRow.font = { bold: true }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDF6EC' } }
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' }
+
+  const widths = [10, 18, 10, 12, 12, 12, 22, 16, 12, 40]
+  widths.forEach((width, i) => { ws.getColumn(i + 1).width = width })
+
+  // 关键列下拉（数据区域第 2 行起，预留 500 行）
+  const setListValidation = (col: number, values: string[]) => {
+    for (let r = 2; r <= 500; r++) {
+      ws.getCell(r, col).dataValidation = { type: 'list', allowBlank: true, formulae: [`"${values.join(',')}"`] }
+    }
+  }
+  setListValidation(3, budgetCarriers)    // 运营商
+  setListValidation(4, budgetFeeTypes)    // 费用类型
+  setListValidation(9, ['年缴费', '月缴费']) // 缴费方式
+
+  // 表头批注：字段格式说明
+  ws.getCell(1, 1).note = '财年，整数，如 2026（26财年 = 2026年4月~2027年3月）'
+  ws.getCell(1, 2).note = '与基础配置中的门店名称保持一致'
+  ws.getCell(1, 5).note = '月费金额（元），数字，留空按 0 处理'
+  ws.getCell(1, 6).note = '年费金额（元），数字，留空按 0 处理'
+  ws.getCell(1, 7).note = '费用范围，格式 YYYY-MM~YYYY-MM，如 2026-04~2027-03；留空表示全年有效'
+  ws.getCell(1, 9).note = '缴费方式：年缴费 / 月缴费'
+
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '预算明细导入模板.xlsx'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 上传 Excel 导入预算明细（整批拒绝/跳过重复由后端处理），成功后刷新数据 */
+async function importBudget(file: File): Promise<{ count: number; skipped: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { post } = useApi()
+  const result = await post<{ success: boolean; count: number; skipped: number }>('/api/budgets/import', formData)
+  await fetchDetails()
+  return { count: result.count, skipped: result.skipped }
+}
+
 export function useBudgetData() {
   /** 财年列表（从数据中动态提取） */
   const fiscalYears = computed(() => {
@@ -237,5 +301,7 @@ export function useBudgetData() {
     addDetail,
     updateDetail,
     deleteDetail,
+    downloadBudgetTemplate,
+    importBudget,
   }
 }
