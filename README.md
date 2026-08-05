@@ -16,7 +16,7 @@ nano docker-compose.yml
 docker compose up -d
 ```
 
-首次仅需在 Compose 顶部修改 MySQL root 密码、JWT 密钥和首次管理员密码。默认 Web 访问地址为 `http://服务器地址:31956`；MySQL 映射为局域网 `服务器地址:3307`。
+下载的 Compose 文件本身带有逐项中文注释、修改提示和示例。首次仅需在顶部修改 MySQL root 密码、JWT 密钥和首次管理员密码；保留中文占位值时会停止启动并提示修改。默认 Web 访问地址为 `http://服务器地址:31956`；MySQL 映射为局域网 `服务器地址:3307`。
 
 完整说明见 [Docker Compose 部署指南](deploy/docker/README.md)。
 

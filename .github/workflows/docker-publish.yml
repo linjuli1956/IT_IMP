@@ -35,3 +35,22 @@ jobs:
           tags: |
             linjuli2026/it-imp-web:latest
             linjuli2026/it-imp-web:${{ steps.date.outputs.tag }}
+
+      - name: 同步 Docker Hub 仓库说明
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          auth_payload="$(jq -nc --arg identifier "$DOCKERHUB_USERNAME" --arg secret "$DOCKERHUB_TOKEN" '{identifier: $identifier, secret: $secret}')"
+          access_token="$(curl --fail --silent --show-error --request POST \
+            --header 'Content-Type: application/json' \
+            --data "$auth_payload" \
+            https://hub.docker.com/v2/auth/token | jq -er '.access_token')"
+
+          description='IT_IMP 综合管理平台：Docker Compose 一键部署，无需源码或本地构建。'
+          repository_payload="$(jq -nc --arg description "$description" '{description: $description}')"
+          curl --fail --silent --show-error --request PATCH \
+            --header "Authorization: Bearer $access_token" \
+            --header 'Content-Type: application/json' \
+            --data "$repository_payload" \
+            "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/it-imp-web/"

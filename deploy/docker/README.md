@@ -12,13 +12,13 @@ nano docker-compose.yml
 docker compose up -d
 ```
 
-首次只需在 `docker-compose.yml` 顶部的“部署配置”区域修改三项：
+仓库中的 [`docker-compose.yml`](docker-compose.yml) 本身就是带完整注释的部署示例。首次只需在顶部的“部署配置”区域，按同行示例修改三项：
 
 - `mysql-root-password`：MySQL root 密码，例如 `MySql@2026#Secure`；
 - `jwt-secret`：用于登录认证的长随机密钥，例如 `JwtSecret@2026#IT_IMP`；
 - `initial-admin-password`：首次管理员密码，例如 `Admin@2026#Secure`。
 
-不要直接使用示例值。未修改 `CHANGE_ME_...` 占位值时，Compose 会在启动数据库前停止并提示配置错误。密码包含 `$` 时，在 Compose 中须写成 `$$`。
+不要直接使用中文占位值或示例值。未修改“你的MySQL强密码”“你的JWT强密钥”或“你的管理员密码”时，Compose 会在启动数据库前停止并提示配置错误。密码包含 `$` 时，在 Compose 中须写成 `$$`。
 
 ## 端口与数据目录
 

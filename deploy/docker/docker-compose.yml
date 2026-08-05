@@ -2,6 +2,7 @@
 #
 # 使用方法：只需修改本文件顶部的“部署配置”，然后执行：docker compose up -d
 # 不需要 .env、不需要下载源码、不需要在 NAS 构建镜像。
+# 本文件可直接作为 GitHub 部署示例：每项配置都附有用途、示例或修改提示。
 #
 # 服务说明：
 #   - config-check：一次性检查必填密钥，成功后显示 Exited 0 属正常现象。
@@ -11,27 +12,27 @@
 # 固定日期版本：将 web.image 的 latest 改为例如 20260805。
 
 x-it-imp-settings:
-  # ======== 必须修改：换成自己的强密码/密钥，不能使用示例值 ========
+  # ======== 必须修改：换成你自己的强密码，不能直接使用中文占位值或示例值 ========
   # 密码包含 $ 时，Compose 中须写成 $$；例如 A$B 应写为 A$$B。
-  mysql-root-password: &mysql-root-password "CHANGE_ME_MYSQL_ROOT_PASSWORD" # 例如: MySql@2026#Secure
-  jwt-secret: &jwt-secret "CHANGE_ME_JWT_SECRET"                             # 例如: JwtSecret@2026#IT_IMP
-  initial-admin-username: &initial-admin-username "admin"                    # 可修改初始管理员账号
-  initial-admin-password: &initial-admin-password "CHANGE_ME_INITIAL_ADMIN_PASSWORD" # 例如: Admin@2026#Secure
+  mysql-root-password: &mysql-root-password "你的MySQL强密码" # 例如: MySql@2026#Secure；MySQL root 登录密码
+  jwt-secret: &jwt-secret "你的JWT强密钥" # 例如: JwtSecret@2026#IT_IMP；用于登录令牌签名
+  initial-admin-username: &initial-admin-username "admin" # 首次管理员账号，可按需修改
+  initial-admin-password: &initial-admin-password "你的管理员密码" # 例如: Admin@2026#Secure；首次登录后请立即修改
 
   # ======== 平台显示与时区 ========
-  app-name: &app-name "综合管理平台" # 浏览器页面显示的系统名称
-  timezone: &timezone "Asia/Shanghai"
-  mysql-command: &mysql-command "--default-time-zone=+08:00"
+  app-name: &app-name "综合管理平台" # 浏览器页面显示的系统名称，例如：泰兴超市信息部综合管理平台
+  timezone: &timezone "Asia/Shanghai" # 时区，例如：Asia/Shanghai
+  mysql-command: &mysql-command "--default-time-zone=+08:00" # MySQL 使用东八区
 
   # ======== NAS 对外端口：左边是 NAS/局域网端口，不是容器内部端口 ========
-  web-port: &web-port "31956"     # 浏览器访问：http://NAS_IP:31956
-  mysql-port: &mysql-port "3307"  # DBX 等外部工具连接：NAS_IP:3307
+  web-port: &web-port "31956"     # 浏览器访问：http://NAS_IP:31956；可改为未占用端口
+  mysql-port: &mysql-port "3307"  # DBX 等外部工具连接：NAS_IP:3307；可改为未占用端口
 
   # ======== 数据持久化目录：请按 NAS 实际目录修改 ========
   # 相对路径可写 ./data/mysql 与 ./data/app；NAS 推荐使用绝对路径。
   # MySQL 数据库文件位于 mysql 目录；用户上传的 PDF 等应用文件位于 app 目录。
-  mysql-data-dir: &mysql-data-dir "./data/mysql"
-  app-data-dir: &app-data-dir "./data/app"
+  mysql-data-dir: &mysql-data-dir "./data/mysql" # 示例：/vol1/1000/docker/IT_IMP_docker/data/mysql
+  app-data-dir: &app-data-dir "./data/app" # 示例：/vol1/1000/docker/IT_IMP_docker/data/app
 
 services:
   # 启动前阻止公开占位密钥误用于真实数据库；成功退出（Exited 0）表示检查通过。
@@ -49,7 +50,7 @@ services:
         for name in MYSQL_ROOT_PASSWORD JWT_SECRET INITIAL_ADMIN_PASSWORD; do
           value="$$(printenv "$$name")"
           case "$$value" in
-            ""|CHANGE_ME_*)
+            ""|CHANGE_ME_*|"你的MySQL强密码"|"你的JWT强密钥"|"你的管理员密码")
               echo "配置错误：请在 docker-compose.yml 顶部设置 $$name"
               exit 1
               ;;
