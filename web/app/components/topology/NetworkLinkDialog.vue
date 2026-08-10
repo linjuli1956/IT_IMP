@@ -1,11 +1,23 @@
 <template>
   <el-dialog :model-value="modelValue" title="新增连线" width="500px" :destroy-on-close="true" @update:model-value="emit('update:modelValue', $event)">
     <el-form :model="formData" label-width="90px" size="default">
-      <el-form-item label="当前设备">
+      <!-- 上游设备：有 sourceDevice 时固定显示，无时可选 -->
+      <el-form-item v-if="sourceDevice" label="上游设备">
         <span>{{ sourceName }}</span>
       </el-form-item>
-      <el-form-item label="目标设备" required>
-        <el-select v-model="formData.targetDeviceId" placeholder="选择同门店设备" filterable style="width: 100%">
+      <el-form-item v-else label="上游设备" required>
+        <el-select v-model="formData.sourceDeviceId" placeholder="选择设备" filterable style="width: 100%" @change="onSourceChange">
+          <el-option
+            v-for="d in sourceOptions"
+            :key="d.id"
+            :label="d.label"
+            :value="d.id"
+          />
+        </el-select>
+      </el-form-item>
+      <!-- 下游设备 -->
+      <el-form-item label="下游设备" required>
+        <el-select v-model="formData.targetDeviceId" placeholder="选择同门店设备" filterable style="width: 100%" :disabled="!formData.sourceDeviceId">
           <el-option
             v-for="d in targetOptions"
             :key="d.id"
@@ -74,30 +86,49 @@ const formData = reactive({
   remark: '',
 })
 
-// —— 源设备名称 ——
+// —— 设备名格式化 ——
+function deviceName(d: NetworkDeviceItem): string {
+  const parts = [d.brand, d.model].filter(Boolean)
+  return parts.length ? parts.join(' ') : `未命名${d.deviceType}`
+}
+
+// —— 源设备名称（固定模式时显示） ——
 const sourceName = computed(() => {
   const d = props.sourceDevice
   if (!d) return ''
-  const parts = [d.brand, d.model].filter(Boolean)
-  return parts.length ? parts.join(' ') : `未命名${d.deviceType}`
+  return deviceName(d)
 })
 
-// —— 目标设备选项：同门店、排除自身 ——
+// —— 上游设备选项（仅在 sourceDevice 为 null 时使用） ——
+const sourceOptions = computed(() => {
+  if (props.sourceDevice) return []
+  return props.devices.map(d => ({ id: d.id, label: deviceName(d) }))
+})
+
+// —— 当前选中的上游设备（固定模式用 prop，可选模式用表单） ——
+const selectedSourceDevice = computed<NetworkDeviceItem | null>(() => {
+  if (props.sourceDevice) return props.sourceDevice
+  return props.devices.find(d => d.id === formData.sourceDeviceId) || null
+})
+
+// —— 下游设备选项：同门店、排除上游 ——
 const targetOptions = computed(() => {
-  const d = props.sourceDevice
+  const d = selectedSourceDevice.value
   if (!d) return []
   return props.devices
-    .filter((x) => x.storeId === d.storeId && x.id !== d.id)
-    .map((x) => {
-      const parts = [x.brand, x.model].filter(Boolean)
-      return { id: x.id, label: parts.length ? parts.join(' ') : `未命名${x.deviceType}` }
-    })
+    .filter(x => x.storeId === d.storeId && x.id !== d.id)
+    .map(x => ({ id: x.id, label: deviceName(x) }))
 })
+
+// —— 上游设备切换时清空下游 ——
+function onSourceChange() {
+  formData.targetDeviceId = null
+}
 
 // —— 打开时初始化表单 ——
 watch(() => props.modelValue, (visible) => {
-  if (visible && props.sourceDevice) {
-    formData.sourceDeviceId = props.sourceDevice.id
+  if (visible) {
+    formData.sourceDeviceId = props.sourceDevice?.id || 0
     formData.targetDeviceId = null
     formData.sourcePort = ''
     formData.targetPort = ''
@@ -108,8 +139,12 @@ watch(() => props.modelValue, (visible) => {
 
 // —— 提交表单 ——
 function handleSubmit() {
+  if (!formData.sourceDeviceId) {
+    ElMessage.warning('请选择上游设备')
+    return
+  }
   if (!formData.targetDeviceId) {
-    ElMessage.warning('请选择目标设备')
+    ElMessage.warning('请选择下游设备')
     return
   }
   emit('submit', {

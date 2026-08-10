@@ -59,6 +59,8 @@
           :store-list="storeListForTopo"
           @node-click="onNodeClick"
           @topology-loaded="onTopologyLoaded"
+          @add-link="onToolbarAddLink"
+          @go-add-device="onGoAddDevice"
         />
       </el-tab-pane>
     </el-tabs>
@@ -89,7 +91,7 @@
       <div v-if="currentDevice" class="link-section">
         <div class="link-section-header">
           <span class="link-section-title">连接关系</span>
-          <el-button v-if="canEdit" type="primary" size="small" @click="linkDialogVisible = true">
+          <el-button v-if="canEdit" type="primary" size="small" @click="openLinkFromDrawer">
             <el-icon><Plus /></el-icon> 新增连线
           </el-button>
         </div>
@@ -125,7 +127,7 @@
     <!-- 新增连线 Dialog（子组件，Props down / Events up） -->
     <NetworkLinkDialog
       v-model="linkDialogVisible"
-      :source-device="currentDevice"
+      :source-device="linkSourceDevice"
       :devices="topoDevices"
       :loading="linkSaving"
       @submit="handleAddLink"
@@ -372,6 +374,27 @@ const deviceLinks = computed(() => {
 // —— 新增连线 ——
 const linkDialogVisible = ref(false)
 const linkSaving = ref(false)
+
+// —— 新增连线来源设备（toolbar=null / drawer=currentDevice） ——
+const linkSourceDevice = ref<NetworkDeviceItem | null>(null)
+
+// 工具栏"新增连线"：无预填来源，用户选择上游+下游
+function onToolbarAddLink() {
+  linkSourceDevice.value = null
+  linkDialogVisible.value = true
+}
+
+// 节点 Drawer"新增连线"：预填当前设备为上游
+function openLinkFromDrawer() {
+  linkSourceDevice.value = currentDevice.value
+  linkDialogVisible.value = true
+}
+
+// "去新增设备"：切换到台账 Tab 并打开新增设备表单
+function onGoAddDevice() {
+  activeTab.value = 'ledger'
+  openAdd()
+}
 
 async function handleAddLink(formData: { sourceDeviceId: number; targetDeviceId: number; sourcePort: string; targetPort: string; linkType: string; remark: string }) {
   linkSaving.value = true

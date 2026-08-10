@@ -2,7 +2,7 @@
   <div>
     <div class="quick-tip">
       <el-icon><InfoFilled /></el-icon>
-      <span>力导向图自动排布 · 滚轮缩放 · 拖拽浏览 · 节点填充色=设备类型 · 边框色=设备状态 · 未配置连线显示空态</span>
+      <span>力导向图自动排布 · 滚轮缩放 · 拖拽浏览 · 节点填充色=设备类型 · 边框色=设备状态 · 无连线时显示设备节点工作台</span>
     </div>
 
     <div class="card filter-bar">
@@ -13,6 +13,7 @@
         <el-option v-for="t in networkDeviceTypeOptions" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
       <el-button :icon="Refresh" @click="fetchTopology" :loading="topoLoading">刷新</el-button>
+      <el-button v-if="canEdit" type="primary" :icon="Plus" @click="emit('add-link')">新增连线</el-button>
       <span class="filter-count">{{ filteredTopoDevices.length }} 台设备 · {{ displayTopoLinks.length }} 条连线</span>
     </div>
 
@@ -37,12 +38,36 @@
         <p v-if="topoError" class="error-detail">{{ topoError }}</p>
         <el-button size="small" @click="fetchTopology">重试</el-button>
       </div>
-      <!-- 全局无连线 -->
+      <!-- 少于两台设备：纯空态 -->
       <EmptyState
-        v-else-if="topoLinks.length === 0"
+        v-else-if="topoDevices.length < 2"
         :icon="Connection"
-        description="尚未配置网络连接关系"
+        description="请先新增至少两台网络设备"
+        actionText="去新增设备"
+        @action="emit('go-add-device')"
       />
+      <!-- 无连线但已有设备：空拓扑工作台 -->
+      <div v-else-if="topoLinks.length === 0" class="chart-workbench">
+        <div class="workbench-hint">
+          <el-icon size="20" color="var(--color-primary)"><Connection /></el-icon>
+          <span>请选择两台设备建立第一条连接关系</span>
+          <el-button v-if="canEdit" type="primary" size="small" :icon="Plus" @click="emit('add-link')">新增连线</el-button>
+        </div>
+        <ClientOnly>
+          <v-chart
+            class="topology-chart"
+            :option="chartOption"
+            autoresize
+            @click="onChartClick"
+          />
+          <template #fallback>
+            <div class="chart-loading">
+              <el-icon size="32" color="var(--border-base)"><DataLine /></el-icon>
+              <p>拓扑图加载中...</p>
+            </div>
+          </template>
+        </ClientOnly>
+      </div>
       <!-- 有连线但筛选后无完整连线 -->
       <div v-else-if="displayTopoLinks.length === 0" class="chart-empty-filtered">
         <el-icon size="32" color="var(--border-base)"><Connection /></el-icon>
@@ -95,7 +120,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { GraphChart } from 'echarts/charts'
 import { TooltipComponent, LegendComponent, ToolboxComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { Refresh, InfoFilled, DataLine, Connection, WarningFilled } from '@element-plus/icons-vue'
+import { Refresh, InfoFilled, DataLine, Connection, WarningFilled, Plus } from '@element-plus/icons-vue'
 import { networkDeviceTypeOptions } from '~/composables/useNetworkDeviceData'
 import { useApi, getApiErrorMessage } from '~/composables/useApi'
 import type { NetworkDeviceItem } from '~/types/network-device'
@@ -118,6 +143,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'node-click': [device: NetworkDeviceItem]
   'topology-loaded': [devices: NetworkDeviceItem[], links: TopologyLink[]]
+  'add-link': []
+  'go-add-device': []
 }>()
 
 // —— 拓扑数据类型 ——
@@ -392,6 +419,29 @@ function onChartClick(params: any) {
   gap: 8px;
   color: var(--text-placeholder);
   font-size: var(--font-size-small);
+}
+
+.chart-workbench {
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.workbench-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-base);
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.chart-workbench .topology-chart {
+  flex: 1;
+  width: 100%;
 }
 
 .legend-card {
