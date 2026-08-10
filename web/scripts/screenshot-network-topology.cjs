@@ -83,11 +83,17 @@ async function login(page, role, options = {}) {
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockDeviceList) })
   );
 
-  // 拓扑 API：根据 options.empty 决定返回空态还是正常
-  const topoData = options.empty ? mockTopologyEmpty : mockTopology;
-  await page.route(`${BASE}/api/network-devices/topology**`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(topoData) })
-  );
+  // 拓扑 API：根据 options.error 决定返回 500，或 options.empty 返回空态，否则返回正常
+  if (options.error) {
+    await page.route(`${BASE}/api/network-devices/topology**`, (route) =>
+      route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Internal Server Error' }) })
+    );
+  } else {
+    const topoData = options.empty ? mockTopologyEmpty : mockTopology;
+    await page.route(`${BASE}/api/network-devices/topology**`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(topoData) })
+    );
+  }
 
   // POST/DELETE 连线 API mock
   await page.route(`${BASE}/api/network-devices/links`, (route) =>
@@ -114,6 +120,8 @@ async function shot(page, name, label) {
     return !!(
       document.querySelector('.topology-chart') ||
       document.querySelector('.empty-state') ||
+      document.querySelector('.chart-error') ||
+      document.querySelector('.chart-empty-filtered') ||
       document.querySelector('.el-drawer') ||
       document.querySelector('.el-tabs')
     );
@@ -242,7 +250,27 @@ async function runViewport(vp) {
       return shot(page, `topo-${vp.label}-empty.png`, `[${vp.label}] 无连线空态`);
     });
 
-    // ===== 5. 查看者拓扑（无新增/删除连线入口） =====
+    // ===== 5. API 500 错误态 =====
+    await step(results, `topo-${vp.label}-api-error.png`, `[${vp.label}] API 500 错误态`, async () => {
+      await ctx.clearCookies();
+      await login(page, '管理员', { error: true });
+      await page.goto(`${BASE}/it/network-devices`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+      await page.locator('.el-tabs__item:has-text("网络拓扑")').click();
+      await page.waitForTimeout(3000);
+      // DOM 断言：应显示“拓扑数据加载失败”
+      const errorText = await page.locator('text=拓扑数据加载失败').isVisible().catch(() => false);
+      console.log(`  [DOM断言] 错误态文案存在: ${errorText} (期望 true)`);
+      if (!errorText) {
+        results.push({ name: `_dom-assert-api-error-${vp.label}.txt`, ok: false, reason: '未看到错误态文案' });
+      }
+      // DOM 断言：重试按钮存在
+      const retryBtn = await page.locator('button:has-text("重试")').isVisible().catch(() => false);
+      console.log(`  [DOM断言] 重试按钮存在: ${retryBtn} (期望 true)`);
+      return shot(page, `topo-${vp.label}-api-error.png`, `[${vp.label}] API 500 错误态`);
+    });
+
+    // ===== 6. 查看者拓扑（无新增/删除连线入口） =====
     await step(results, `topo-${vp.label}-viewer.png`, `[${vp.label}] 查看者拓扑（无编辑入口）`, async () => {
       await ctx.clearCookies();
       await login(page, '查看者');

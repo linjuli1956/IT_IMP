@@ -18,9 +18,17 @@
 
     <!-- 拓扑图 / 空态 -->
     <div class="card topology-card">
-      <div v-if="topoLoading" class="chart-loading">
+      <!-- 首次加载中 -->
+      <div v-if="topoLoading && !topoLoaded" class="chart-loading">
         <el-icon size="32" color="var(--border-base)"><DataLine /></el-icon>
         <p>拓扑图加载中...</p>
+      </div>
+      <!-- 首次加载失败 -->
+      <div v-else-if="topoError && !topoLoaded" class="chart-error">
+        <el-icon size="32" color="var(--color-danger, #F56C6C)"><WarningFilled /></el-icon>
+        <p>拓扑数据加载失败</p>
+        <p v-if="topoError" class="error-detail">{{ topoError }}</p>
+        <el-button size="small" @click="fetchTopology">重试</el-button>
       </div>
       <!-- 全局无连线 -->
       <EmptyState
@@ -80,7 +88,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { GraphChart } from 'echarts/charts'
 import { TooltipComponent, LegendComponent, ToolboxComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { Refresh, InfoFilled, DataLine, Connection } from '@element-plus/icons-vue'
+import { Refresh, InfoFilled, DataLine, Connection, WarningFilled } from '@element-plus/icons-vue'
 import { networkDeviceTypeOptions } from '~/composables/useNetworkDeviceData'
 import { useApi, getApiErrorMessage } from '~/composables/useApi'
 import type { NetworkDeviceItem } from '~/types/network-device'
@@ -121,6 +129,7 @@ const topoDevices = ref<NetworkDeviceItem[]>([])
 const topoLinks = ref<TopologyLink[]>([])
 const topoLoading = ref(false)
 const topoLoaded = ref(false)
+const topoError = ref('')
 
 // —— 拓扑筛选 ——
 const topoStoreId = ref<number | null>(null)
@@ -138,27 +147,29 @@ function topoDeviceName(d: NetworkDeviceItem): string {
 
 // —— 拓扑数据获取 ——
 async function fetchTopology() {
+  // 请求开始：清空错误状态
   topoLoading.value = true
-  topoLoaded.value = true
+  topoError.value = ''
   try {
     const { get } = useApi()
     const query: Record<string, string | number> = {}
     if (topoStoreId.value) query.storeId = topoStoreId.value
     const data = await get<{ devices: NetworkDeviceItem[]; links: TopologyLink[] }>('/api/network-devices/topology', { query })
+    // 请求成功：更新数据、标记已加载、通知父组件
     topoDevices.value = data.devices
     topoLinks.value = data.links
+    topoLoaded.value = true
     emit('topology-loaded', data.devices, data.links)
   } catch (e) {
-    topoDevices.value = []
-    topoLinks.value = []
-    emit('topology-loaded', [], [])
+    // 请求失败：记录错误、保留上一次成功数据、不 emit 空数组
+    topoError.value = getApiErrorMessage(e)
   } finally {
     topoLoading.value = false
   }
 }
 
 // —— 暴露 fetchTopology 给父组件调用 ——
-defineExpose({ fetchTopology, topoDevices, topoLinks })
+defineExpose({ fetchTopology, topoDevices, topoLinks, topoError })
 
 // —— 首次挂载时自动加载 ——
 onMounted(() => {
@@ -334,6 +345,25 @@ function onChartClick(params: any) {
   gap: 8px;
   color: var(--text-placeholder);
   font-size: var(--font-size-small);
+}
+
+.chart-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-placeholder);
+  font-size: var(--font-size-small);
+}
+
+.error-detail {
+  color: var(--text-secondary);
+  font-size: 12px;
+  max-width: 300px;
+  text-align: center;
+  word-break: break-all;
 }
 
 .chart-empty-filtered {

@@ -9,7 +9,8 @@
  * 1. 全部校验和写入在单个 $transaction 内完成（无事务外检查窗口）；
  * 2. 事务内对两端设备行执行 SELECT ... FOR UPDATE，按 min(id)/max(id) 一致顺序加锁；
  *    A→B 和 B→A 请求锁同一对设备行，后到的事务等待先到的提交后才能继续；
- * 3. 先到事务提交后，后到事务重查 existingLinks 即可发现已存在连线 → 409 拒绝；
+ * 3. 设备锁拿到后，existingLinks 也使用 SELECT ... FOR UPDATE 锁定读（current read），
+ *    直接读取最新已提交数据（非事务快照），先到事务提交的连线立即可见 → 409 拒绝；
  * 4. 同方向唯一索引 unique_device_link 作为最后防线；
  * 5. 死锁/锁超时/序列化冲突 → isRetryableConcurrencyError → 最多重试 3 次。
  *
@@ -75,52 +76,66 @@ export default defineEventHandler(async (event: H3Event) => {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       await prisma.$transaction(async (tx) => {
-        // 1. 查询 source/target 设备（含门店名）
-        const [sourceDevice, targetDevice] = await Promise.all([
-          tx.networkDevice.findUnique({
-            where: { id: sourceDeviceId },
-            include: { store: { select: { name: true } } },
-          }),
-          tx.networkDevice.findUnique({
-            where: { id: targetDeviceId },
-            include: { store: { select: { name: true } } },
-          }),
-        ])
-
-        if (!sourceDevice) {
-          throw createError({ statusCode: 404, message: '源设备不存在' })
-        }
-        if (!targetDevice) {
-          throw createError({ statusCode: 404, message: '目标设备不存在' })
-        }
-
-        // 第一版两端设备必须属于同一门店
-        if (sourceDevice.storeId !== targetDevice.storeId) {
-          throw createError({
-            statusCode: 400,
-            message: `第一版要求两端设备属于同一门店（源：${sourceDevice.store?.name ?? '未知'}，目标：${targetDevice.store?.name ?? '未知'}）`,
-          })
-        }
-
-        // 2. 锁定设备对（按 min/max 一致顺序，防止 A→B 和 B→A 并发通过）
-        //    FOR UPDATE 使后到事务等待先到事务提交，提交后重查即可发现已存在连线
+        // 1. 锁定两端设备（FOR UPDATE = 锁定读/当前读，读取最新已提交数据并加行锁）
+        //    按 min(id)/max(id) 一致顺序加锁，A→B 和 B→A 请求锁同一对设备行
         const [firstId, secondId] = sourceDeviceId < targetDeviceId
           ? [sourceDeviceId, targetDeviceId]
           : [targetDeviceId, sourceDeviceId]
-        await tx.$queryRaw`SELECT id FROM network_devices WHERE id = ${firstId} FOR UPDATE`
-        await tx.$queryRaw`SELECT id FROM network_devices WHERE id = ${secondId} FOR UPDATE`
 
-        // 3. 查询已存在的同方向 + 反方向连线（此时已持有行锁）
-        const existingLinks = await tx.networkDeviceLink.findMany({
-          where: {
-            OR: [
-              { sourceDeviceId, targetDeviceId },
-              { sourceDeviceId: targetDeviceId, targetDeviceId: sourceDeviceId },
-            ],
-          },
-        })
+        const [firstRows, secondRows] = await Promise.all([
+          tx.$queryRaw`SELECT id, storeId, brand, model, deviceType FROM network_devices WHERE id = ${firstId} FOR UPDATE`,
+          tx.$queryRaw`SELECT id, storeId, brand, model, deviceType FROM network_devices WHERE id = ${secondId} FOR UPDATE`,
+        ]) as [any[], any[]]
 
-        // 4. 同方向重复检查（含端口）
+        // 校验设备锁查询确实各返回一行；并发删除导致缺行时返回明确 404，不依赖后续 P2003
+        if (firstRows.length === 0) {
+          throw createError({
+            statusCode: 404,
+            message: firstId === sourceDeviceId ? '源设备不存在' : '目标设备不存在',
+          })
+        }
+        if (secondRows.length === 0) {
+          throw createError({
+            statusCode: 404,
+            message: secondId === sourceDeviceId ? '源设备不存在' : '目标设备不存在',
+          })
+        }
+
+        // 映射回 source/target
+        const sourceDevice = firstId === sourceDeviceId ? firstRows[0] : secondRows[0]
+        const targetDevice = firstId === targetDeviceId ? firstRows[0] : secondRows[0]
+
+        // 第一版两端设备必须属于同一门店
+        if (Number(sourceDevice.storeId) !== Number(targetDevice.storeId)) {
+          const [sourceStore, targetStore] = await Promise.all([
+            tx.store.findUnique({ where: { id: Number(sourceDevice.storeId) }, select: { name: true } }),
+            tx.store.findUnique({ where: { id: Number(targetDevice.storeId) }, select: { name: true } }),
+          ])
+          throw createError({
+            statusCode: 400,
+            message: `第一版要求两端设备属于同一门店（源：${sourceStore?.name ?? '未知'}，目标：${targetStore?.name ?? '未知'}）`,
+          })
+        }
+
+        // 2. 锁定读已存在的同方向 + 反方向连线
+        //    FOR UPDATE = 锁定读/当前读，直接读取最新已提交数据（非事务快照）
+        //    先到事务提交的连线此时立即可见 → 后到事务检测到反方向重复 → 409 拒绝
+        const existingLinksRaw = await tx.$queryRaw`
+          SELECT sourceDeviceId, targetDeviceId, sourcePort, targetPort
+          FROM network_device_links
+          WHERE (sourceDeviceId = ${sourceDeviceId} AND targetDeviceId = ${targetDeviceId})
+             OR (sourceDeviceId = ${targetDeviceId} AND targetDeviceId = ${sourceDeviceId})
+          FOR UPDATE
+        `
+
+        const existingLinks = (existingLinksRaw as any[]).map((r) => ({
+          sourceDeviceId: Number(r.sourceDeviceId),
+          targetDeviceId: Number(r.targetDeviceId),
+          sourcePort: String(r.sourcePort ?? ''),
+          targetPort: String(r.targetPort ?? ''),
+        }))
+
+        // 3. 同方向重复检查（含端口）
         const sameDirErr = checkSameDirectionDuplicate(
           existingLinks, sourceDeviceId, targetDeviceId, sourcePort, targetPort,
         )
@@ -128,15 +143,19 @@ export default defineEventHandler(async (event: H3Event) => {
           throw createError({ statusCode: 409, message: sameDirErr })
         }
 
-        // 5. 反方向重复检查
+        // 4. 反方向重复检查
         const reverseErr = checkReverseDuplicate(existingLinks, sourceDeviceId, targetDeviceId)
         if (reverseErr) {
           throw createError({ statusCode: 409, message: reverseErr })
         }
 
-        // 6. 创建连接 + 写操作日志（同一事务）
-        const sourceName = formatDeviceName(sourceDevice)
-        const targetName = formatDeviceName(targetDevice)
+        // 5. 创建连接 + 写操作日志（同一事务）
+        const sourceName = formatDeviceName({
+          brand: sourceDevice.brand, model: sourceDevice.model, deviceType: sourceDevice.deviceType,
+        })
+        const targetName = formatDeviceName({
+          brand: targetDevice.brand, model: targetDevice.model, deviceType: targetDevice.deviceType,
+        })
 
         await tx.networkDeviceLink.create({
           data: { sourceDeviceId, sourcePort, targetDeviceId, targetPort, linkType, remark },
