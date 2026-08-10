@@ -192,12 +192,29 @@
           </template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column v-if="canEdit" label="操作" width="240" fixed="right" align="center">
+        <el-table-column label="操作" width="160" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button size="small" @click="goDetail(row.id)">详情</el-button>
-            <el-button size="small" @click="openPasswordDialog(row)">密码</el-button>
-            <el-button size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            <template v-if="canEdit">
+              <button class="action-text action-text--primary" @click="handleEdit(row)">编辑</button>
+              <button class="action-text action-text--danger" @click="handleDelete(row)">删除</button>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleRowAction(cmd, row as ServerListItem)">
+                <span class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="password">
+                      <el-icon class="dropdown-icon dropdown-icon--credential"><Lock /></el-icon>密码管理
+                    </el-dropdown-item>
+                    <el-dropdown-item v-if="manageUrlOf(row as ServerListItem)" command="manage">
+                      <el-icon class="dropdown-icon dropdown-icon--external"><Link /></el-icon>进入管理
+                    </el-dropdown-item>
+                    <el-dropdown-item command="detail">
+                      <el-icon class="dropdown-icon dropdown-icon--info"><View /></el-icon>打开详情页
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </template>
+            <button v-else class="action-text action-text--info" @click="goDetail(row.id)">详情</button>
           </template>
         </el-table-column>
       </el-table>
@@ -258,10 +275,21 @@
 
       <!-- 底部操作区 -->
       <template #footer>
-        <el-button size="small" @click="goDetail(selectedServer!.id)">详情页</el-button>
-        <el-button v-if="canEdit" size="small" @click="handleEdit(selectedServer!)">编辑</el-button>
-        <el-button v-if="canEdit" size="small" @click="openPasswordDialog(selectedServer!)">密码管理</el-button>
-        <a v-if="selectedServer && manageUrlOf(selectedServer)" :href="manageUrlOf(selectedServer)!" target="_blank" rel="noopener" class="btn-link">进入管理</a>
+        <ActionButton variant="close" size="small" @click="drawerVisible = false">关闭</ActionButton>
+        <ActionButton v-if="canEdit" variant="primary" size="small" :icon="Edit" @click="handleEdit(selectedServer!)">编辑</ActionButton>
+        <ActionButton v-if="canEdit" variant="credential" size="small" @click="openPasswordDialog(selectedServer!)">密码管理</ActionButton>
+        <ActionButton v-if="selectedServer && manageUrlOf(selectedServer)" variant="external" size="small" :href="manageUrlOf(selectedServer!)!">进入管理</ActionButton>
+        <ActionButton v-if="!showDetailInMore" variant="info" size="small" @click="goDetail(selectedServer!.id)">打开详情页</ActionButton>
+        <el-dropdown v-else trigger="click" @command="handleFooterAction">
+          <span class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="detail">
+                <el-icon class="dropdown-icon dropdown-icon--info"><View /></el-icon>打开详情页
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </AssetDetailDrawer>
 
@@ -513,7 +541,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDebounceFn } from '@vueuse/core'
-import { Plus, Monitor, Connection, HomeFilled, Cloudy, WarningFilled, InfoFilled } from '@element-plus/icons-vue'
+import { Plus, Monitor, Connection, HomeFilled, Cloudy, WarningFilled, InfoFilled, Lock, Link, View, ArrowDown, Edit } from '@element-plus/icons-vue'
 import { useServerWorkspace } from '~/composables/useServerWorkspace'
 import type { ServerItem, ServerListItem } from '~/types/server'
 import { serverVisualTone, platformOf } from '~/utils/server-visual-tone'
@@ -897,6 +925,29 @@ async function handleSavePassword() {
     savingPassword.value = false
   }
 }
+
+// —— 行操作“更多”下拉 + Drawer footer 溢出控制 ——
+const showDetailInMore = computed(() => {
+  return canEdit.value && !!selectedServer.value && !!manageUrlOf(selectedServer.value)
+})
+
+function handleRowAction(cmd: string, row: ServerListItem) {
+  switch (cmd) {
+    case 'password': openPasswordDialog(row); break
+    case 'manage': {
+      const url = manageUrlOf(row)
+      if (url) window.open(url, '_blank', 'noopener')
+      break
+    }
+    case 'detail': goDetail(row.id); break
+  }
+}
+
+function handleFooterAction(cmd: string) {
+  if (cmd === 'detail' && selectedServer.value) {
+    goDetail(selectedServer.value.id)
+  }
+}
 </script>
 
 <style scoped>
@@ -1034,21 +1085,5 @@ async function handleSavePassword() {
 .platform-tag--pve { background: var(--tone-pve-bg); color: var(--tone-pve-text); border-color: var(--tone-pve-border); }
 .platform-tag--esxi { background: var(--tone-esxi-bg); color: var(--tone-esxi-text); border-color: var(--tone-esxi-border); }
 
-/* —— 按钮链接 —— */
-.btn-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 24px;
-  padding: 0 8px;
-  font-size: var(--font-size-small);
-  color: var(--color-primary);
-  background: var(--color-primary-light);
-  border: 1px solid var(--color-primary-border);
-  border-radius: var(--radius-btn);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.btn-link:hover { border-color: var(--color-primary); }
+/* btn-link 已由 ActionButton variant="external" 替代 */
 </style>

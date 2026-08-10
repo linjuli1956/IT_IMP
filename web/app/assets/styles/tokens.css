@@ -190,4 +190,85 @@
   --header-bg: var(--bg-card);
   --header-border: var(--border-lighter);
   --content-bg: var(--bg-page);
+
+  /* ===========================================
+   * Action 语义动作色（功能语义着色按钮体系）
+   * 规则：关闭灰 / 主操作蓝 / 删除红 / 凭据紫 / 外链橙 / 详情蓝轻
+   * 平台色仅用于资产身份(PVE/ESXi/云厂)，状态色仅用于正常/停用/报废
+   * =========================================== */
+
+  /* 1. 关闭/取消/返回 — 中性灰描边 */
+  --action-close-fg: var(--text-regular);
+  --action-close-bg: transparent;
+  --action-close-border: var(--border-base);
+  --action-close-hover-fg: var(--text-primary);
+  --action-close-hover-bg: var(--bg-hover);
+  --action-close-hover-border: var(--border-base);
+
+  /* 2. 新增/保存/编辑/确认 — 品牌蓝色实心 */
+  --action-primary-fg: #FFFFFF;
+  --action-primary-bg: #409EFF;
+  --action-primary-border: #409EFF;
+  --action-primary-hover-bg: #66B1FF;
+  --action-primary-hover-border: #66B1FF;
+  --action-primary-active-bg: #3A9EE9;
+  --action-primary-active-border: #3A9EE9;
+  --action-primary-disabled-bg: #A0CFFF;
+  --action-primary-disabled-border: #A0CFFF;
+
+  /* 3. 删除/解除绑定/高风险确认 — 红色实心 */
+  --action-danger-fg: #FFFFFF;
+  --action-danger-bg: #F56C6C;
+  --action-danger-border: #F56C6C;
+  --action-danger-hover-bg: #F78989;
+  --action-danger-hover-border: #F78989;
+  --action-danger-active-bg: #DD6161;
+  --action-danger-active-border: #DD6161;
+  --action-danger-disabled-bg: #FAB6B6;
+  --action-danger-disabled-border: #FAB6B6;
+
+  /* 4. 密码管理/凭据查看 — 紫色柔和实心 */
+  --action-credential-fg: #FFFFFF;
+  --action-credential-bg: #7C3AED;
+  --action-credential-border: #7C3AED;
+  --action-credential-hover-bg: #9061F9;
+  --action-credential-hover-border: #9061F9;
+  --action-credential-active-bg: #6D28D9;
+  --action-credential-active-border: #6D28D9;
+  --action-credential-disabled-bg: #C4B5FD;
+  --action-credential-disabled-border: #C4B5FD;
+
+  /* 5. 外部管理入口 — 橙色实心（复用品牌主色） */
+  --action-external-fg: #FFFFFF;
+  --action-external-bg: var(--color-primary);
+  --action-external-border: var(--color-primary);
+  --action-external-hover-bg: var(--color-primary-hover);
+  --action-external-hover-border: var(--color-primary-hover);
+  --action-external-active-bg: var(--color-primary-active);
+  --action-external-active-border: var(--color-primary-active);
+  --action-external-disabled-bg: #F3D19E;
+  --action-external-disabled-border: #F3D19E;
+
+  /* 6. 查看详情/跳转详情页 — 蓝色轻量 */
+  --action-info-fg: #409EFF;
+  --action-info-bg: #ECF5FF;
+  --action-info-border: #B3D8FF;
+  --action-info-hover-fg: #66B1FF;
+  --action-info-hover-bg: #ECF5FF;
+  --action-info-hover-border: #66B1FF;
+  --action-info-active-fg: #3A9EE9;
+  --action-info-active-bg: #ECF5FF;
+  --action-info-active-border: #3A9EE9;
+
+  /* Action button 统一尺寸 */
+  --action-btn-height: 32px;
+  --action-btn-height-sm: 28px;
+  --action-btn-font-size: var(--font-size-body);
+  --action-btn-font-size-sm: var(--font-size-small);
+  --action-btn-radius: var(--radius-btn);
+  --action-btn-icon-gap: 6px;
+  --action-btn-gap: var(--spacing-btn-gap);
+
+  /* Drawer footer 统一 */
+  --drawer-footer-gap: var(--action-btn-gap);
 }

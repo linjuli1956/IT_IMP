@@ -269,3 +269,36 @@ body {
   font-size: var(--font-size-body);
   color: var(--text-regular);
 }
+
+/* —— 表格行操作文字按钮（语义着色，使用 action token）—— */
+.action-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-size-small);
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  font: inherit;
+  transition: opacity var(--transition-fast);
+}
+.action-text:hover { opacity: 0.75; }
+.action-text:disabled { opacity: 0.5; cursor: not-allowed; }
+.action-text--close { color: var(--text-secondary); }
+.action-text--primary { color: var(--action-primary-bg); }
+.action-text--danger { color: var(--action-danger-bg); }
+.action-text--credential { color: var(--action-credential-bg); }
+.action-text--external { color: var(--action-external-bg); }
+.action-text--info { color: var(--action-info-fg); }
+.action-text__caret { font-size: 10px; margin-left: 2px; }
+
+/* —— 下拉菜单项图标语义色 —— */
+.dropdown-icon { margin-right: 4px; }
+.dropdown-icon--close { color: var(--text-secondary); }
+.dropdown-icon--primary { color: var(--action-primary-bg); }
+.dropdown-icon--danger { color: var(--action-danger-bg); }
+.dropdown-icon--credential { color: var(--action-credential-bg); }
+.dropdown-icon--external { color: var(--action-external-bg); }
+.dropdown-icon--info { color: var(--action-info-fg); }
