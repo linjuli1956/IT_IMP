@@ -14,12 +14,14 @@
   /* —— 功能色 —— */
   --color-success: #67C23A;
   --color-warning: #E6A23C;
+  --color-caution: #D4AC0D;
   --color-danger: #F56C6C;
   --color-info: #909399;
 
   /* —— 功能色浅背景（用于指标卡片等）—— */
   --color-success-light: #F0F9EB;
   --color-warning-light: #FDF6EC;
+  --color-caution-light: #FEF9E7;
   --color-danger-light: #FEF0F0;
   --color-info-light: #F4F4F5;
 

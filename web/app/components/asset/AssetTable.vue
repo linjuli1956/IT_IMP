@@ -1,5 +1,5 @@
 <template>
-  <div class="asset-table">
+  <div class="asset-table" :class="{ 'asset-table--clickable': rowClickable }">
     <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="asset-table__error" />
     <el-table
       v-else-if="loading || data.length > 0"
@@ -8,6 +8,7 @@
       border
       size="small"
       style="width: 100%"
+      @row-click="onRowClick"
     >
       <el-table-column v-for="col in columns" :key="col.key" :prop="col.virtual ? undefined : col.key" :label="col.label"
         :width="col.width" :min-width="col.minWidth" :align="col.align || 'left'" show-overflow-tooltip>
@@ -18,11 +19,11 @@
           <el-tag :type="getAssetStatusTagType(String(row[col.key]))" size="small">{{ row[col.key] }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="canEdit" label="操作" :width="actionWidth" fixed="right" align="center">
+      <el-table-column v-if="canEdit" label="操作" :width="actionWidth" fixed="right" align="center" class-name="col-action">
         <template #default="{ row }">
           <slot name="actions" :row="row">
-            <el-button size="small" @click="$emit('edit', row as T)">编辑</el-button>
-            <el-button size="small" type="danger" @click="$emit('delete', row as T)">删除</el-button>
+            <el-button size="small" @click.stop="$emit('edit', row as T)">编辑</el-button>
+            <el-button size="small" type="danger" @click.stop="$emit('delete', row as T)">删除</el-button>
           </slot>
         </template>
       </el-table-column>
@@ -73,6 +74,7 @@ const props = defineProps<{
   pageSize: number
   canEdit?: boolean
   actionWidth?: number
+  rowClickable?: boolean
   error?: string
   emptyText?: string
 }>()
@@ -83,6 +85,7 @@ const emit = defineEmits<{
   'page-change': [page: number, size: number]
   edit: [row: T]
   delete: [row: T]
+  'row-click': [row: T]
 }>()
 
 const currentPage = computed({
@@ -97,6 +100,14 @@ const currentPageSize = computed({
 function handlePageChange(page: number, size: number) {
   emit('page-change', page, size)
 }
+
+/** 行点击：rowClickable 时触发；操作列点击不误触发（通过 col-action class 标识，不依赖中文文案） */
+function onRowClick(row: T, _column: any, event: Event) {
+  if (!props.rowClickable) return
+  const target = (event as Event).target as HTMLElement
+  if (target?.closest('.col-action')) return
+  emit('row-click', row)
+}
 </script>
 
 <style scoped>
@@ -106,4 +117,5 @@ function handlePageChange(page: number, size: number) {
   margin-top: var(--spacing-card);
 }
 .asset-table__error { margin-bottom: var(--spacing-card); }
+.asset-table--clickable :deep(.el-table__row) { cursor: pointer; }
 </style>

@@ -231,6 +231,8 @@ const routeTitleMap: Record<string, string> = {
   '/payment': '支付管理',
   '/it/servers': '服务器管理',
   '/design/server-workspace': '服务器管理',
+  '/design/ledger-workspace': '台账资产设计稿',
+  '/design/service-workspace': '服务资产设计稿',
   '/it/network-devices': '网络设备',
   '/it/phones': '固话管理',
   '/it/computers': '电脑管理',
@@ -252,6 +254,8 @@ const routeParentMap: Record<string, string> = {
   '/it/domains': 'IT资产管理',
   '/it/miniapps': 'IT资产管理',
   '/design/server-workspace': 'IT资产管理',
+  '/design/ledger-workspace': 'IT资产管理',
+  '/design/service-workspace': 'IT资产管理',
 }
 
 /** 详情页等子路由归并到一级菜单标题 */
@@ -270,6 +274,8 @@ const parentTitle = computed(() => routeParentMap[route.path] || '')
 const activeMenu = computed(() => {
   const path = route.path
   if (path.startsWith('/design/server-workspace')) return '/it/servers'
+  if (path.startsWith('/design/ledger-workspace')) return '/it/network-devices'
+  if (path.startsWith('/design/service-workspace')) return '/it/domains'
   return path
 })
 
