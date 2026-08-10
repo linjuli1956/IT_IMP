@@ -4,8 +4,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import * as XLSX from 'xlsx'
-import { parseBudgetRows } from './budget-import'
-
+import { parseBudgetRows, dedupeBudgetRows, type BudgetImportRow } from './budget-import'
 /** 标准模板表头（与前端下载模板、后端表头别名保持一致） */
 const HEADERS = ['财年', '门店', '运营商', '费用类型', '月费(元)', '年费(元)', '费用范围', '宽带类型', '缴费方式', '备注']
 
@@ -129,5 +128,96 @@ describe('parseBudgetRows', () => {
     const { rows, errors } = parseBudgetRows(buffer)
     expect(rows).toHaveLength(0)
     expect(errors).toEqual([])
+  })
+
+  it('模板示例行（示例门店）自动跳过，不导入也不报错', () => {
+    const buffer = buildXlsx([
+      HEADERS,
+      ['示例门店', '示例门店', '电信', '宽带', 100, 1200, '2026-04~2027-03', '100M', '月缴费', '示例行'],
+      [2026, '门店A', '移动', '物联网', 50, 0, '', '', '', ''],
+    ])
+    const { rows, errors } = parseBudgetRows(buffer)
+    expect(errors).toEqual([])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].storeName).toBe('门店A')
+  })
+
+  it('默认费用范围填充：模板费用范围为空的导入时自动填充', () => {
+    const buffer = buildXlsx([
+      HEADERS,
+      [2026, '门店A', '电信', '宽带', 100, 1200, '', '', '', ''],
+      [2026, '门店B', '移动', '物联网', 50, 0, '2026-04~2026-12', '', '', ''],
+    ])
+    const { rows, errors } = parseBudgetRows(buffer, '2026-04~2027-03')
+    expect(errors).toEqual([])
+    expect(rows).toHaveLength(2)
+    expect(rows[0].feeRange).toBe('2026-04~2027-03') // 空 → 填充默认值
+    expect(rows[1].feeRange).toBe('2026-04~2026-12') // 已填写 → 以模板为准
+  })
+
+  it('不传默认费用范围时，空费用范围保持为空（全年有效）', () => {
+    const buffer = buildXlsx([
+      HEADERS,
+      [2026, '门店A', '电信', '宽带', 100, 0, '', '', '', ''],
+    ])
+    const { rows } = parseBudgetRows(buffer)
+    expect(rows[0].feeRange).toBe('')
+  })
+
+  it('非法月份（00/13/99）的费用范围被拒绝', () => {
+    const badRanges = ['2026-00~2026-12', '2026-13~2026-14', '2026-99~2027-03']
+    for (const feeRange of badRanges) {
+      const buffer = buildXlsx([
+        HEADERS,
+        [2026, '门店A', '电信', '宽带', 100, 0, feeRange, '', '', ''],
+      ])
+      const { rows, errors } = parseBudgetRows(buffer)
+      expect(rows).toHaveLength(0)
+      expect(errors[0]?.message).toContain('费用范围格式应为 YYYY-MM~YYYY-MM')
+    }
+  })
+
+  it('边界合法月份（01 与 12）的费用范围可通过', () => {
+    const buffer = buildXlsx([
+      HEADERS,
+      [2026, '门店A', '电信', '宽带', 100, 0, '2026-01~2026-12', '', '', ''],
+    ])
+    const { rows, errors } = parseBudgetRows(buffer)
+    expect(errors).toEqual([])
+    expect(rows[0].feeRange).toBe('2026-01~2026-12')
+  })
+})
+
+describe('dedupeBudgetRows', () => {
+  const row = (storeName: string): BudgetImportRow => ({
+    fiscalYear: 2026, storeName, carrier: '电信', feeType: '宽带',
+    monthlyFee: 100, annualFee: 0, feeRange: '', broadbandType: '', paymentMethod: '', remark: '',
+  })
+
+  it('同一文件内重复组合只保留第一行，其余计入 skipped', () => {
+    const { rows, skipped } = dedupeBudgetRows(
+      [row('门店A'), row('门店A'), row('门店B'), row('门店A')],
+      new Set(),
+    )
+    expect(rows).toHaveLength(2) // 门店A、门店B
+    expect(skipped).toBe(2)      // 门店A 重复 2 次
+  })
+
+  it('与数据库已有组合重复的行被跳过', () => {
+    const existing = new Set(['2026|门店A|电信|宽带'])
+    const { rows, skipped } = dedupeBudgetRows([row('门店A'), row('门店B')], existing)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].storeName).toBe('门店B')
+    expect(skipped).toBe(1)
+  })
+
+  it('库内重复与文件内重复合计计入 skipped，不重复计数', () => {
+    const existing = new Set(['2026|门店A|电信|宽带'])
+    const { rows, skipped } = dedupeBudgetRows(
+      [row('门店A'), row('门店A'), row('门店B')],
+      existing,
+    )
+    expect(rows).toHaveLength(1) // 仅 门店B
+    expect(skipped).toBe(2)      // 门店A(库内) + 门店A(文件内)
   })
 })

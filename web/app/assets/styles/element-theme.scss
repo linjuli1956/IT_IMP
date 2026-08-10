@@ -1,47 +1,58 @@
 /* ===========================================
- * Element Plus 橙色主题定制
- * 覆盖 Element Plus 默认蓝色为橙色系
+ * Element Plus 主题定制
+ * 统一引用 tokens.css 变量，消除重复硬编码
+ * 加载顺序：tokens.css → element-theme.scss → global.css
  * =========================================== */
 
 :root {
-  /* 主色覆盖 */
-  --el-color-primary: #E6A23C;
-  --el-color-primary-light-3: #EBB056;
+  /* 主色（引用 tokens.css） */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: var(--color-primary-hover);
   --el-color-primary-light-5: #F0C078;
-  --el-color-primary-light-7: #F5DAB1;
+  --el-color-primary-light-7: var(--color-primary-border);
   --el-color-primary-light-8: #FAE8C9;
-  --el-color-primary-light-9: #FDF6EC;
-  --el-color-primary-dark-2: #C98A2E;
+  --el-color-primary-light-9: var(--color-primary-light);
+  --el-color-primary-dark-2: var(--color-primary-active);
 
-  /* 功能色保持 Element Plus 默认 */
-  --el-color-success: #67C23A;
-  --el-color-warning: #E6A23C;
-  --el-color-danger: #F56C6C;
-  --el-color-info: #909399;
+  /* 功能色 */
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-warning);
+  --el-color-danger: var(--color-danger);
+  --el-color-info: var(--color-info);
+
+  /* 功能色浅背景 */
+  --el-color-success-light-9: var(--color-success-light);
+  --el-color-warning-light-9: var(--color-warning-light);
+  --el-color-danger-light-9: var(--color-danger-light);
+  --el-color-info-light-9: var(--color-info-light);
 
   /* 边框色 */
-  --el-border-color: #DCDFE6;
-  --el-border-color-light: #E4E7ED;
-  --el-border-color-lighter: #EBEEF5;
+  --el-border-color: var(--border-base);
+  --el-border-color-light: var(--border-light);
+  --el-border-color-lighter: var(--border-lighter);
 
   /* 背景色 */
-  --el-bg-color: #FFFFFF;
-  --el-bg-color-page: #F5F7FA;
-  --el-bg-color-overlay: #FFFFFF;
+  --el-bg-color: var(--bg-card);
+  --el-bg-color-page: var(--bg-page);
+  --el-bg-color-overlay: var(--bg-card);
 
   /* 文字色 */
-  --el-text-color-primary: #303133;
-  --el-text-color-regular: #606266;
-  --el-text-color-secondary: #909399;
-  --el-text-color-placeholder: #C0C4CC;
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-regular);
+  --el-text-color-secondary: var(--text-secondary);
+  --el-text-color-placeholder: var(--text-placeholder);
 
   /* 圆角 */
-  --el-border-radius-base: 4px;
+  --el-border-radius-base: var(--radius-small);
   --el-border-radius-small: 2px;
   --el-border-radius-round: 20px;
 
   /* 字体 */
-  --el-font-size-base: 14px;
-  --el-font-size-small: 13px;
-  --el-font-size-extra-small: 12px;
+  --el-font-size-base: var(--font-size-body);
+  --el-font-size-small: var(--font-size-small);
+  --el-font-size-extra-small: var(--font-size-mini);
+
+  /* 阴影 */
+  --el-box-shadow: var(--shadow-card);
+  --el-box-shadow-light: var(--shadow-card);
 }

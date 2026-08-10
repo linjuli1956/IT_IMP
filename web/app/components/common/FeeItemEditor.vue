@@ -132,6 +132,7 @@ function removeItem(index: number) {
 
 function openAllocationEditor(index: number) {
   const item = items.value[index]
+  if (!item) return // 越界/删除后索引失效守卫
   currentEditIndex.value = index
   currentAllocations.value = item.allocations || []
   currentAllocationMode.value = item.allocationMode
@@ -140,8 +141,10 @@ function openAllocationEditor(index: number) {
 }
 
 function handleAllocationSave(allocations: FeeAllocation[]) {
-  if (currentEditIndex.value >= 0) {
-    items.value[currentEditIndex.value].allocations = allocations
+  const idx = currentEditIndex.value
+  if (idx >= 0) {
+    const target = items.value[idx]
+    if (target) target.allocations = allocations
   }
   currentEditIndex.value = -1
 }

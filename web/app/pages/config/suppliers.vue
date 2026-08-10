@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="客户管理">
+    <PageHeader
+      title="客户管理"
+      subtitle="合作方信息与合同关联"
+      :description="`管理合作方信息（运营商、设备商、服务商等），客户类型支持 6 种预设+自定义输入，不同类型有独有配色标识。合同管理模块将引用此处的客户信息。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -9,18 +13,9 @@
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理合作方信息（运营商、设备商、服务商等）</p>
-        <p>2. 客户类型支持6种预设+自定义输入</p>
-        <p>3. 不同类型有独有配色标识，便于区分</p>
-        <p>4. 合同管理模块将引用此处的客户信息</p>
-      </div>
-    </el-alert>
-
     <div class="card">
       <CrudTable
+        v-if="supplierList.length > 0 || loading"
         :columns="columns"
         :data="supplierList"
         :loading="loading"
@@ -32,6 +27,7 @@
           <el-tag size="small" effect="plain" :style="getTypeStyle(row.type)">{{ row.type }}</el-tag>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无客户数据" />
     </div>
 
     <EditDialog

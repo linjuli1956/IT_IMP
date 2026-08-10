@@ -1,16 +1,6 @@
 <template>
   <div class="page-container">
-    <PageHeader title="计提表列表" />
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 从"批次详情"页面点击"生成计提表"创建计提表，电信按明细表匹配、移动联通按发票金额</p>
-        <p>2. 点击"查看"进入计提表详情，可查看按门店分组的计提明细</p>
-        <p>3. 计提表支持A5打印（A4纸上下排2张A5），勾选多张可批量打印，报销说明在详情页可复制</p>
-        <p>4. 电信计提的号码行从明细表取费用，非号码行通过倒推计算（发票总额 - 号码行之和）</p>
-      </div>
-    </el-alert>
+    <PageHeader title="计提表列表" subtitle="运营商费用计提管理" description="从批次详情生成计提表，电信按明细表匹配号码费用，移动/联通按发票金额生成；支持A5打印与批量打印，报销说明在详情页可复制" />
 
     <!-- 筛选区 -->
     <div class="card filter-card">
@@ -38,6 +28,7 @@
     <!-- 列表 -->
     <div class="card">
       <CrudTable
+        v-if="loading || filteredList.length > 0"
         :columns="columns"
         :data="filteredList"
         :loading="loading"
@@ -72,12 +63,12 @@
         </template>
       </CrudTable>
 
-      <!-- 空状态提示 -->
-      <div v-if="filteredList.length === 0" class="empty-hint">
-        <el-empty description="暂无计提表，请从批次详情页面生成">
-          <el-button type="primary" @click="navigateTo('/invoices/batches')">前往批次列表</el-button>
-        </el-empty>
-      </div>
+      <EmptyState
+        v-else
+        description="暂无计提表，请从批次详情页面生成"
+        action-text="前往批次列表"
+        @action="navigateTo('/invoices/batches')"
+      />
     </div>
   </div>
 </template>
@@ -178,9 +169,5 @@ function handleBatchPrint(rows: any[]) {
 .amount-highlight {
   font-weight: 600;
   color: var(--color-primary);
-}
-
-.empty-hint {
-  padding: 40px 0;
 }
 </style>

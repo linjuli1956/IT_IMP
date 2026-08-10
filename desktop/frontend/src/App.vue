@@ -14,10 +14,10 @@ const dbConfig = ref({ host: '', port: 3306, username: 'root', password: '', dbn
 const passwordConfigured = ref(false)
 const defaultAppName = '综合管理平台'
 const appName = ref(defaultAppName)
-const configToolVersion = shallowRef('20260805')
+const configToolVersion = shallowRef('20260810')
 const configToolTitle = computed(() => `${appName.value.trim() || defaultAppName}-配置工具 ${configToolVersion.value}`)
 const jwtSecret = ref('')
-const initialAdmin = ref({ username: 'admin', password: '123456' })
+const initialAdmin = ref({ username: 'admin', password: '' })
 const webPort = ref(3000)
 const activeTab = ref('database')
 const serviceRunning = ref(false)
@@ -106,7 +106,17 @@ const handleGenerateJWTSecret = async () => {
   }
 }
 
+/** 校验初始管理员密码：必须由用户主动填写且至少 6 位（禁止使用固定默认密码） */
+const validateAdminPassword = () => {
+  if (!initialAdmin.value.password || initialAdmin.value.password.length < 6) {
+    ElMessage.warning('管理员密码至少需要 6 位，请在“首次管理员”中填写')
+    return false
+  }
+  return true
+}
+
 const handleInitDatabase = async () => {
+  if (!validateAdminPassword()) return
   // 输入库名确认（GitHub 删仓库风格）
   try {
     await ElMessageBox.prompt(
@@ -185,6 +195,7 @@ const handleUpgradeDatabase = async () => {
 }
 
 const handleResetAdminPassword = async () => {
+  if (!validateAdminPassword()) return
   try {
     await ElMessageBox.confirm(
       `即将重置管理员「${initialAdmin.value.username}」的登录密码。\n\n不会重建数据库，不会删除业务数据，也不会影响其他用户。\n\n请确认“初始密码”输入框中已填写新的临时密码。`,
@@ -203,6 +214,7 @@ const handleResetAdminPassword = async () => {
 }
 
 const handleProvisionInitialAdmin = async () => {
+  if (!validateAdminPassword()) return
   try {
     await ElMessageBox.confirm(
       `将检查数据库是否还没有任何用户。\n\n若没有用户，会创建首次管理员「${initialAdmin.value.username}」。\n若已有用户，则不会修改账号、密码或业务数据。\n\n不会删除数据库。`,

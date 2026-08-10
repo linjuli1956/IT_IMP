@@ -12,7 +12,7 @@
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
 import { readMultipartFormData, createError, type H3Event } from 'h3'
-import { parseBudgetRows, type BudgetImportRow } from '../../utils/budget-import'
+import { parseBudgetRows, isFeeRangeValid, dedupeBudgetRows, type BudgetImportRow, type BudgetImportError } from '../../utils/budget-import'
 
 /** 文件大小上限：5MB */
 const MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -43,8 +43,23 @@ export default defineEventHandler(async (event: H3Event) => {
     throw createError({ statusCode: 400, message: '文件大小不能超过 5MB' })
   }
 
-  // 2. 解析 + 校验（整批拒绝策略）
-  const { rows, errors } = parseBudgetRows(filePart.data)
+  // 可选：默认费用范围（模板中费用范围为空的导入时自动填充）
+  const defaultFeeRangePart = formData?.find(part => part.name === 'defaultFeeRange')
+  const defaultFeeRange = defaultFeeRangePart ? defaultFeeRangePart.data.toString('utf-8').trim() : ''
+  if (defaultFeeRange !== '' && !isFeeRangeValid(defaultFeeRange)) {
+    throw createError({ statusCode: 400, message: '默认费用范围格式应为 YYYY-MM~YYYY-MM（月份 01~12），且结束日期不能早于开始日期' })
+  }
+
+  // 2. 解析 + 校验（整批拒绝策略；损坏文件捕获为 400 而非 500）
+  let rows: BudgetImportRow[]
+  let errors: BudgetImportError[]
+  try {
+    const parsed = parseBudgetRows(filePart.data, defaultFeeRange)
+    rows = parsed.rows
+    errors = parsed.errors
+  } catch {
+    throw createError({ statusCode: 400, message: '文件无法解析，请确认是有效的 .xlsx / .xls 文件' })
+  }
   if (errors.length > 0) {
     throw createError({
       statusCode: 400,
@@ -66,35 +81,37 @@ export default defineEventHandler(async (event: H3Event) => {
     existing.map(e => `${e.fiscalYear}|${e.storeName}|${e.carrier}|${e.feeType}`)
   )
 
-  const toImport: BudgetImportRow[] = []
-  let skipped = 0
-  for (const row of rows) {
-    const key = `${row.fiscalYear}|${row.storeName}|${row.carrier}|${row.feeType}`
-    if (existingKeys.has(key)) {
-      skipped++
-      continue
-    }
-    toImport.push(row)
-  }
+  // 4. 去重：库内已存在 + 同文件重复 的组合均跳过并计数
+  const { rows: toImport, skipped } = dedupeBudgetRows(rows, existingKeys)
 
-  // 4. 批量入库
+  // 4. 批量入库（数据库唯一约束兑底：并发导入等导致的组合冲突整体拒绝）
   let count = 0
   if (toImport.length > 0) {
-    const result = await prisma.budgetDetail.createMany({
-      data: toImport.map(item => ({
-        fiscalYear: item.fiscalYear,
-        storeName: item.storeName,
-        carrier: item.carrier,
-        feeType: item.feeType,
-        monthlyFee: item.monthlyFee,
-        annualFee: item.annualFee,
-        feeRange: item.feeRange,
-        broadbandType: item.broadbandType,
-        paymentMethod: item.paymentMethod,
-        remark: item.remark,
-      })),
-    })
-    count = result.count
+    try {
+      const result = await prisma.budgetDetail.createMany({
+        data: toImport.map(item => ({
+          fiscalYear: item.fiscalYear,
+          storeName: item.storeName,
+          carrier: item.carrier,
+          feeType: item.feeType,
+          monthlyFee: item.monthlyFee,
+          annualFee: item.annualFee,
+          feeRange: item.feeRange,
+          broadbandType: item.broadbandType,
+          paymentMethod: item.paymentMethod,
+          remark: item.remark,
+        })),
+      })
+      count = result.count
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw createError({
+          statusCode: 409,
+          message: '导入数据与已有记录发生冲突（可能已被其他操作写入），本次未导入任何数据，请重新上传',
+        })
+      }
+      throw error
+    }
   }
 
   // 5. 操作日志

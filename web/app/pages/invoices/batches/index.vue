@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="批次列表">
+    <PageHeader
+      title="批次列表"
+      subtitle="发票批次管理与计提"
+      description="批次号格式：{年月}{运营商缩写}{序号}（如 202606DX01）。支持按运营商、费用月、状态筛选。待计提批次显示「生成计提」按钮，已计提/已打印批次显示「再次生成」。"
+    >
       <template #actions>
         <el-button type="primary" @click="navigateTo('/invoices/upload')">
           <el-icon><Upload /></el-icon>
@@ -8,16 +12,6 @@
         </el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 批次号格式：{年月}{运营商缩写}{序号}（如 202606DX01）</p>
-        <p>2. 点击"详情"进入批次详情，可查看发票列表和报销说明</p>
-        <p>3. 待计提批次显示"生成计提"按钮，已计提/已打印批次显示"再次生成"</p>
-        <p>4. 支持按运营商、费用月、状态筛选批次</p>
-      </div>
-    </el-alert>
 
     <!-- 筛选区 -->
     <div class="card filter-card">
@@ -50,8 +44,22 @@
       </el-form>
     </div>
 
+    <!-- 批次状态概览 -->
+    <el-row :gutter="16" class="stat-row">
+      <el-col :span="8">
+        <StatCard :icon="Clock" :color="vars.danger" :bg="vars.dangerLight" :value="pendingCount" label="待计提" />
+      </el-col>
+      <el-col :span="8">
+        <StatCard :icon="Document" :color="vars.warning" :bg="vars.warningLight" :value="accruedCount" label="已计提" />
+      </el-col>
+      <el-col :span="8">
+        <StatCard :icon="Printer" :color="vars.success" :bg="vars.successLight" :value="printedCount" label="已打印" />
+      </el-col>
+    </el-row>
+
     <!-- 批次表格 -->
     <div class="card">
+      <template v-if="loading || filteredBatches.length > 0">
       <!-- 批量操作栏 -->
       <div v-if="selectedBatches.length > 0" class="batch-bar">
         <span class="batch-info">已选 {{ selectedBatches.length }} 项</span>
@@ -107,19 +115,31 @@
           </template>
         </el-table-column>
       </el-table>
+      </template>
 
-      <div v-if="filteredBatches.length === 0" class="empty-tip">
-        <el-empty description="暂无批次数据" />
-      </div>
+      <EmptyState v-else description="暂无批次数据" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, Clock, Document, Printer } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+// —— CSS 变量 ——
+const vars = {
+  primary: 'var(--color-primary)', primaryLight: 'var(--color-primary-light)',
+  success: 'var(--color-success)', successLight: 'var(--color-success-light)',
+  warning: 'var(--color-warning)', warningLight: 'var(--color-warning-light)',
+  danger: 'var(--color-danger)', dangerLight: 'var(--color-danger-light)',
+}
+
 const { batchList, deleteBatch, deleteBatches, getBatchStatusText, getBatchStatusType, formatBatchNo, fetchBatches, loading } = useInvoiceData()
+
+// 批次状态概览计数（待计提/已计提/已打印）
+const pendingCount = computed(() => batchList.value.filter(b => b.status === 'pending').length)
+const accruedCount = computed(() => batchList.value.filter(b => b.status === 'accrued').length)
+const printedCount = computed(() => batchList.value.filter(b => b.status === 'printed').length)
 
 // 页面加载时获取批次列表
 onMounted(() => {
@@ -254,7 +274,5 @@ async function handleDelete(row: any) {
   margin-right: auto;
 }
 
-.empty-tip {
-  padding: 40px 0;
-}
+.stat-row { margin-bottom: 0; }
 </style>

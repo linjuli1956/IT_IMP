@@ -1,6 +1,6 @@
 <template>
   <div class="page-container" v-loading="loading">
-    <PageHeader :title="`计提表详情 ${accrual?.batchNo || ''}`">
+    <PageHeader :title="`计提表详情 ${accrual?.batchNo || ''}`" subtitle="计提明细与A5打印">
       <template #actions>
         <el-button @click="navigateTo('/accruals')">返回列表</el-button>
         <el-button @click="copyAllReimbursement">
@@ -99,9 +99,7 @@
 
     <!-- 计提表不存在 -->
     <div v-else class="card not-found-card">
-      <el-empty description="计提表不存在或已被删除">
-        <el-button type="primary" @click="navigateTo('/accruals')">返回列表</el-button>
-      </el-empty>
+      <EmptyState description="计提表不存在或已被删除" action-text="返回列表" @action="navigateTo('/accruals')" />
     </div>
 
     <!-- 编辑费用项弹窗 -->
@@ -147,7 +145,7 @@
 <script setup lang="ts">
 import { CopyDocument, Printer, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { generateReimbursementText } from '~/composables/useAccrualData'
+import { generateReimbursementText } from '~/utils/reimbursement'
 import type { AccrualGroup } from '~/types/accrual'
 
 const route = useRoute()

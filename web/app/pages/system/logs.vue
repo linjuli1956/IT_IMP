@@ -81,16 +81,11 @@ onMounted(async () => {
 
 <template>
   <div class="page-container">
-    <PageHeader title="操作日志" />
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 记录系统中的关键操作，包括新增、编辑、删除、登录、导出和打印。</p>
-        <p>2. 可按时间范围、用户、操作类型和模块筛选，并支持分页查看。</p>
-        <p>3. 所有登录用户可查看；仅管理员可清空日志，清空操作本身会保留审计记录。</p>
-      </div>
-    </el-alert>
+    <PageHeader
+      title="操作日志"
+      subtitle="系统操作审计记录"
+      :description="`记录系统关键操作（新增/编辑/删除/登录/导出/打印），支持按时间、用户、类型、模块筛选与分页查看。所有用户可查看，仅管理员可清空日志，清空操作本身会保留审计记录。`"
+    />
 
     <OperationLogFilters
       :filters="filters"

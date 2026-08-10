@@ -39,10 +39,14 @@ function validateCredentials(username, password) {
 }
 
 const username = (process.env[`${prefix}_USERNAME`] || process.env.INITIAL_ADMIN_USERNAME || 'admin').trim()
-// 基础 Docker 配置开箱即用；生产部署可用 _FILE 形式的 Docker Secret 覆盖。
+// 密码必须显式提供（Docker 用 INITIAL_ADMIN_PASSWORD / ADMIN_RESET_PASSWORD 或对应 _FILE；
+// EXE 通过仅对子进程可见的环境变量传入）。缺失时直接报错，禁止回退到任何固定默认密码。
 const password = isReset
-  ? (readSecret('ADMIN_RESET_PASSWORD') || readSecret('INITIAL_ADMIN_PASSWORD') || '123456')
-  : (readSecret('INITIAL_ADMIN_PASSWORD') || '123456')
+  ? (readSecret('ADMIN_RESET_PASSWORD') || readSecret('INITIAL_ADMIN_PASSWORD'))
+  : readSecret('INITIAL_ADMIN_PASSWORD')
+if (!password) {
+  throw new Error(`未配置管理员密码（${isReset ? 'ADMIN_RESET_PASSWORD' : 'INITIAL_ADMIN_PASSWORD'} 或对应 _FILE 环境变量）`)
+}
 validateCredentials(username, password)
 
 const connection = await mariadb.createConnection({

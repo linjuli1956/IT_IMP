@@ -4,12 +4,16 @@
     <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
       <div class="logo">
         <el-icon size="24" color="var(--color-primary)"><Coin /></el-icon>
-        <span v-if="!isCollapse">{{ appName }}</span>
+        <span v-if="!isCollapse" class="logo-text">{{ appName }}</span>
       </div>
       <el-menu
         :default-active="activeMenu"
+        :default-openeds="defaultOpeneds"
         :collapse="isCollapse"
         :collapse-transition="false"
+        background-color="var(--sidebar-bg)"
+        text-color="var(--sidebar-text)"
+        active-text-color="var(--sidebar-text-active)"
         router
         class="layout-menu"
       >
@@ -18,7 +22,7 @@
           <span>首页</span>
         </el-menu-item>
 
-        <el-sub-menu index="expense">
+        <el-sub-menu index="expense" popper-class="layout-menu-popup">
           <template #title>
             <el-icon><Document /></el-icon>
             <span>费用报销</span>
@@ -30,7 +34,7 @@
           <el-menu-item index="/accruals">计提表列表</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="config">
+        <el-sub-menu index="config" popper-class="layout-menu-popup">
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>基础配置</span>
@@ -56,23 +60,28 @@
           <span>支付管理</span>
         </el-menu-item>
 
-        <el-sub-menu index="it">
+        <el-sub-menu index="it" popper-class="layout-menu-popup">
           <template #title>
             <el-icon><Monitor /></el-icon>
             <span>IT资产管理</span>
           </template>
           <el-menu-item index="/it/servers">服务器管理</el-menu-item>
+          <el-menu-item index="/it/network-devices">网络设备</el-menu-item>
+          <el-menu-item index="/it/phones">固话管理</el-menu-item>
+          <el-menu-item index="/it/computers">电脑管理</el-menu-item>
+          <el-menu-item index="/it/scales">电子称管理</el-menu-item>
           <el-menu-item index="/it/domains">域名管理</el-menu-item>
           <el-menu-item index="/it/miniapps">小程序管理</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="system">
+        <el-sub-menu index="system" popper-class="layout-menu-popup">
           <template #title>
             <el-icon><Tools /></el-icon>
             <span>系统管理</span>
           </template>
           <el-menu-item index="/system/users">用户管理</el-menu-item>
           <el-menu-item index="/system/logs">操作日志</el-menu-item>
+          <el-menu-item index="/system/settings">系统设置</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -82,10 +91,22 @@
       <!-- 顶部栏 -->
       <el-header class="layout-header">
         <div class="header-left">
-          <el-icon class="collapse-btn" @click="isCollapse = !isCollapse">
-            <Fold v-if="!isCollapse" />
-            <Expand v-else />
-          </el-icon>
+          <button
+            class="collapse-btn"
+            type="button"
+            :aria-label="isCollapse ? '展开侧边栏' : '折叠侧边栏'"
+            @click="isCollapse = !isCollapse"
+          >
+            <el-icon>
+              <Fold v-if="!isCollapse" />
+              <Expand v-else />
+            </el-icon>
+          </button>
+          <el-breadcrumb separator="/" class="header-breadcrumb">
+            <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item v-if="parentTitle">{{ parentTitle }}</el-breadcrumb-item>
+            <el-breadcrumb-item v-if="currentTitle">{{ currentTitle }}</el-breadcrumb-item>
+          </el-breadcrumb>
         </div>
         <div class="header-right">
           <el-dropdown @command="handleCommand">
@@ -180,17 +201,84 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useApi, getApiErrorMessage } from '~/composables/useApi'
 import { useStoreData } from '~/composables/useStoreData'
+import { useSettingsData } from '~/composables/useSettingsData'
 
 const route = useRoute()
 const api = useApi()
 const { appName } = useAppBrand()
 const isCollapse = ref(false)
 const { fetchStores } = useStoreData()
+const { fetchSettings } = useSettingsData()
 
-const activeMenu = computed(() => route.path)
 
 // —— 当前登录用户 ——
 const displayName = ref('用户')
+
+/** 路由 → 页面标题（面包屑显示，与侧边栏菜单一致） */
+const routeTitleMap: Record<string, string> = {
+  '/': '首页',
+  '/invoices/upload': '上传发票',
+  '/invoices/batches': '批次列表',
+  '/invoices/list': '发票列表',
+  '/details': '明细表管理',
+  '/accruals': '计提表列表',
+  '/config/stores': '部门门店机构',
+  '/config/templates': '计提模板',
+  '/config/fee-schemes': '费用分摊方案',
+  '/config/suppliers': '客户管理',
+  '/contracts': '合同管理',
+  '/budget': '预算管理',
+  '/payment': '支付管理',
+  '/it/servers': '服务器管理',
+  '/design/server-workspace': '服务器管理',
+  '/it/network-devices': '网络设备',
+  '/it/phones': '固话管理',
+  '/it/computers': '电脑管理',
+  '/it/scales': '电子称管理',
+  '/it/domains': '域名管理',
+  '/it/miniapps': '小程序管理',
+  '/system/users': '用户管理',
+  '/system/logs': '操作日志',
+  '/system/settings': '系统设置',
+}
+
+/** 路由 → 所属一级菜单标题（面包屑第二级显示） */
+const routeParentMap: Record<string, string> = {
+  '/it/servers': 'IT资产管理',
+  '/it/network-devices': 'IT资产管理',
+  '/it/phones': 'IT资产管理',
+  '/it/computers': 'IT资产管理',
+  '/it/scales': 'IT资产管理',
+  '/it/domains': 'IT资产管理',
+  '/it/miniapps': 'IT资产管理',
+  '/design/server-workspace': 'IT资产管理',
+}
+
+/** 详情页等子路由归并到一级菜单标题 */
+const currentTitle = computed(() => {
+  const path = route.path
+  if (path === '/') return ''
+  if (path.startsWith('/it/servers/')) return '服务器管理'
+  if (path.startsWith('/invoices/')) return routeTitleMap[path] || '发票管理'
+  return routeTitleMap[path] || ''
+})
+
+/** 面包屑父级标题（如有） */
+const parentTitle = computed(() => routeParentMap[route.path] || '')
+
+/** 侧栏高亮：设计稿页面映射到对应正式菜单项 */
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path.startsWith('/design/server-workspace')) return '/it/servers'
+  return path
+})
+
+/** 默认展开的子菜单 */
+const defaultOpeneds = computed(() => {
+  const parent = routeParentMap[route.path]
+  if (parent === 'IT资产管理') return ['it']
+  return []
+})
 
 onMounted(() => {
   try {
@@ -204,6 +292,8 @@ onMounted(() => {
   }
   // 全局加载门店数据（供支付管理、预算管理、计提模板等模块使用）
   fetchStores()
+  // 全局加载系统设置（财年起始月等参数，供预算/首页使用）
+  fetchSettings()
 })
 
 // —— 下拉菜单命令处理 ——
@@ -307,63 +397,158 @@ async function handleChangePassword() {
   height: 100vh;
 }
 
+/* —— 深色侧边栏 —— */
 .layout-aside {
-  background: var(--bg-card);
-  border-right: 1px solid var(--border-lighter);
-  transition: width 0.2s ease;
+  background: var(--sidebar-bg);
+  border-right: none;
+  transition: width var(--transition-base);
   overflow: hidden;
 }
 
 .logo {
-  height: 60px;
+  height: var(--header-height);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-bottom: 1px solid var(--border-lighter);
+  background: var(--sidebar-logo-bg);
+  border-bottom: 1px solid var(--sidebar-bg-hover);
   font-size: var(--font-size-subtitle);
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--sidebar-text-active);
   white-space: nowrap;
   overflow: hidden;
+  min-width: 0;
+}
+
+.logo-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .layout-menu {
   border-right: none;
-  height: calc(100vh - 60px);
+  height: calc(100vh - var(--header-height));
   overflow-y: auto;
+  padding: 8px;
+  background: var(--sidebar-bg) !important;
 }
 
 .layout-menu:not(.el-menu--collapse) {
-  width: 220px;
+  width: var(--sidebar-width);
 }
 
+/* —— 侧边栏菜单项（深色主题定制）—— */
+.layout-aside :deep(.el-menu-item),
+.layout-aside :deep(.el-sub-menu__title) {
+  color: var(--sidebar-text) !important;
+  border-radius: var(--radius-md);
+  margin-bottom: 2px;
+  height: 44px;
+  line-height: 44px;
+  transition: background var(--transition-base), color var(--transition-base);
+}
+
+.layout-aside :deep(.el-menu-item:hover),
+.layout-aside :deep(.el-sub-menu__title:hover) {
+  background: var(--sidebar-bg-hover) !important;
+  color: var(--sidebar-text-active) !important;
+}
+
+.layout-aside :deep(.el-menu-item.is-active) {
+  background: var(--sidebar-bg-active) !important;
+  color: var(--sidebar-text-active) !important;
+  font-weight: 600;
+  position: relative;
+}
+
+.layout-aside :deep(.el-menu-item.is-active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: var(--sidebar-indicator);
+  border-radius: 0 2px 2px 0;
+}
+
+.layout-aside :deep(.el-sub-menu .el-menu-item) {
+  padding-left: 40px !important;
+  height: 40px;
+  line-height: 40px;
+}
+
+/* —— 顶部栏 —— */
 .layout-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-lighter);
-  height: 60px;
-  padding: 0 20px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  height: var(--header-height);
+  padding: 0 var(--spacing-page);
+  z-index: var(--z-header);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 面包屑：当前页主文字色，父级次要色 */
+.header-breadcrumb {
+  font-size: var(--font-size-body);
+}
+
+.header-breadcrumb :deep(.el-breadcrumb__item .el-breadcrumb__inner) {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.header-breadcrumb :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .collapse-btn {
-  font-size: var(--font-size-icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
   cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-icon);
   color: var(--text-regular);
-  transition: color 0.2s;
+  transition: color var(--transition-base), background var(--transition-base);
 }
 
-.collapse-btn:hover {
+.collapse-btn:hover,
+.collapse-btn:focus-visible {
   color: var(--color-primary);
+  background: var(--bg-hover);
 }
 
+/* 用户头像区 hover 背景 */
 .user-info {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-base);
+}
+
+.user-info:hover {
+  background: var(--bg-hover);
 }
 
 .username {
@@ -372,7 +557,46 @@ async function handleChangePassword() {
 }
 
 .layout-content {
-  background: var(--bg-page);
+  background: var(--content-bg);
   overflow-y: auto;
+}
+</style>
+
+<style>
+/* 折叠态子菜单 Popup — Teleport 到 body，scoped 无法匹配，须用全局样式 */
+.layout-menu-popup {
+  background: var(--sidebar-bg) !important;
+}
+.layout-menu-popup .el-menu {
+  background: var(--sidebar-bg) !important;
+}
+.layout-menu-popup .el-menu-item {
+  color: var(--sidebar-text) !important;
+  border-radius: var(--radius-md);
+  margin-bottom: 2px;
+  height: 44px;
+  line-height: 44px;
+  transition: background var(--transition-base), color var(--transition-base);
+}
+.layout-menu-popup .el-menu-item:hover {
+  background: var(--sidebar-bg-hover) !important;
+  color: var(--sidebar-text-active) !important;
+}
+.layout-menu-popup .el-menu-item.is-active {
+  background: var(--sidebar-bg-active) !important;
+  color: var(--sidebar-text-active) !important;
+  font-weight: 600;
+  position: relative;
+}
+.layout-menu-popup .el-menu-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: var(--sidebar-indicator);
+  border-radius: 0 2px 2px 0;
 }
 </style>

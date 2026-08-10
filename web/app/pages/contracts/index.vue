@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="合同管理">
+    <PageHeader
+      title="合同管理"
+      subtitle="客户合同与到期提醒"
+      description="管理与客户签订的各类合同（宽带/设备采购/项目/采购/维保）。上传合同PDF附件，支持拖拽上传。到期提醒：30天内标橙色，7天内标红色，首页仪表盘同步展示。点击文件名可查看已上传的合同文件。"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -8,16 +12,6 @@
         </el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理与客户签订的各类合同（宽带/设备采购/项目/采购/维保）</p>
-        <p>2. 上传合同PDF附件，支持拖拽上传</p>
-        <p>3. 到期提醒：30天内标橙色，7天内标红色，首页仪表盘同步展示</p>
-        <p>4. 点击文件名可查看已上传的合同文件</p>
-      </div>
-    </el-alert>
 
     <!-- 筛选区 -->
     <div class="card filter-bar">

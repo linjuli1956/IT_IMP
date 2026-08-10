@@ -1,101 +1,344 @@
 <template>
   <div class="page-container">
-    <PageHeader title="服务器管理">
+    <PageHeader title="服务器管理" subtitle="物理机与虚拟机综合管理">
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" plain @click="handleAddVirtual()">
+          <el-icon><Plus /></el-icon>
+          新增虚拟机
+        </el-button>
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增服务器
         </el-button>
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理本地服务器和各云平台服务器（阿里云/腾讯云/华为云等）的内外网IP、硬件配置、操作系统、登录凭证和数据库凭证</p>
-        <p>2. 服务器类型支持下拉选择或自定义输入，每种类型有独立配色标签</p>
-        <p>3. 敏感信息（登录密码、数据库账号、数据库密码）默认脱敏显示，点击眼睛图标可切换显示/隐藏</p>
-        <p>4. 云服务器到期日期≤30天标红、≤90天标橙；支持全字段搜索，类型和状态列可筛选</p>
-      </div>
-    </el-alert>
+    <!-- 一行提示 -->
+    <div class="quick-tip">
+      <el-icon><InfoFilled /></el-icon>
+      <span>点击卡片打开详情抽屉 · hover 名称快速预览 · 物理机可展开查看虚拟机</span>
+    </div>
 
     <!-- 概览卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
-        <StatCard :icon="Monitor" :color="vars.primary" :bg="vars.primaryLight" :value="serverList.length" label="服务器总数" />
+        <StatCard :icon="Monitor" :color="vars.primary" :bg="vars.primaryLight" :value="statsUnavailable ? '--' : (physicalCount + virtualCount)" label="服务器总数(正常)" />
       </el-col>
       <el-col :span="6">
-        <StatCard :icon="HomeFilled" :color="vars.info" :bg="vars.infoLight" :value="localCount" label="本地服务器" />
+        <StatCard :icon="HomeFilled" :color="vars.info" :bg="vars.infoLight" :value="statsUnavailable ? '--' : physicalCount" label="物理机(正常)" />
       </el-col>
       <el-col :span="6">
-        <StatCard :icon="Cloudy" :color="vars.warning" :bg="vars.warningLight" :value="cloudCount" label="云服务器" />
+        <StatCard :icon="Cloudy" :color="vars.success" :bg="vars.successLight" :value="statsUnavailable ? '--' : virtualCount" label="虚拟机(正常)" />
       </el-col>
       <el-col :span="6">
-        <StatCard :icon="WarningFilled" :color="vars.danger" :bg="vars.dangerLight" :value="expiringSoonCount" label="即将到期(30天)" />
+        <StatCard :icon="WarningFilled" :color="vars.danger" :bg="vars.dangerLight" :value="statsUnavailable ? '--' : expiringSoonCount" label="即将到期(30天)" />
       </el-col>
     </el-row>
 
-    <!-- 搜索栏 -->
+    <!-- 筛选栏 -->
     <div class="card filter-bar">
-      <el-input v-model="filterKeyword" placeholder="搜索名称/云账号/IP/操作系统/用途/账号/备注" clearable style="width: 400px" />
+      <el-radio-group v-model="query.activeTab" class="tab-group" @change="onTabChange">
+        <el-radio-button value="all">全部</el-radio-button>
+        <el-radio-button value="physical">物理机</el-radio-button>
+        <el-radio-button value="virtual">虚拟机</el-radio-button>
+      </el-radio-group>
+      <el-radio-group v-model="viewMode" class="view-mode">
+        <el-radio-button value="card">卡片总览</el-radio-button>
+        <el-radio-button value="tree">树形列表</el-radio-button>
+      </el-radio-group>
+      <el-input v-model="query.keyword" placeholder="搜索名称/IP/用途/账号/备注" clearable style="width: 240px" @input="debouncedSearch" />
+      <el-select v-model="query.status" placeholder="状态" clearable style="width: 110px" @change="handleFilterChange">
+        <el-option v-for="s in serverStatusOptions" :key="s" :label="s" :value="s" />
+      </el-select>
+      <el-select v-model="query.hypervisor" placeholder="虚拟化平台" clearable style="width: 130px" @change="handleFilterChange">
+        <el-option v-for="h in hypervisorOptions" :key="h" :label="h" :value="h" />
+      </el-select>
+      <el-select v-model="query.hostServerId" placeholder="宿主机" clearable filterable style="width: 180px" @change="handleFilterChange">
+        <el-option v-for="h in hostOptions" :key="h.id" :label="h.name" :value="h.id" />
+      </el-select>
+      <span class="filter-count">{{ filterResultCount }} 条结果</span>
     </div>
 
-    <!-- 表格 -->
-    <div class="card">
-      <CrudTable
-        :columns="columns"
-        :data="filteredServers"
-        :loading="loading"
-        :stripe="false"
-        :row-class-name="getServerRowClass"
-        :show-batch-copy="true"
-        @edit="handleEdit"
-        @delete="handleDelete"
-        @batch-delete="handleBatchDelete"
-        @batch-copy="handleBatchCopy"
+    <!-- ========== 卡片总览模式 ========== -->
+    <template v-if="viewMode === 'card'">
+      <!-- 全部：宿主卡 + 孤儿 VM 卡（前端分页） -->
+      <div class="card" v-if="query.activeTab === 'all'">
+        <div v-loading="treeLoading" class="server-card-grid">
+          <ServerHostCard
+            v-for="h in cardPageHosts" :key="h.id"
+            :server="h" :can-edit="canEdit"
+            :is-selected="selectedServer?.id === h.id"
+            @click="openDrawer" @edit="handleEdit" @delete="handleDelete"
+          />
+          <ServerVmCard
+            v-for="vm in filteredOrphanVms" :key="vm.id"
+            :server="vm" :host-manage-url="vm.hostManageUrl" :can-edit="canEdit"
+            :is-selected="selectedServer?.id === vm.id"
+            @click="openDrawer" @click-host="onVmHostClick" @edit="handleEdit" @delete="handleDelete"
+          />
+        </div>
+        <el-empty v-if="!treeLoading && cardHosts.length === 0 && filteredOrphanVms.length === 0" description="暂无服务器" :image-size="80" />
+        <div v-if="cardHosts.length > CARD_PAGE_SIZE" class="card-pagination">
+          <el-pagination layout="prev, pager, next" :total="cardHosts.length" :page-size="CARD_PAGE_SIZE" :current-page="cardPage" @current-change="cardPage = $event" background />
+        </div>
+      </div>
+
+      <!-- 物理机（后端分页） -->
+      <div class="card" v-else-if="query.activeTab === 'physical'">
+        <div v-loading="loading" class="server-card-grid">
+          <ServerHostCard
+            v-for="p in physicalServerList" :key="p.id"
+            :server="p" :can-edit="canEdit"
+            :is-selected="selectedServer?.id === p.id"
+            @click="openDrawer" @edit="handleEdit" @delete="handleDelete"
+          />
+          <el-empty v-if="!loading && physicalServerList.length === 0" description="暂无物理机" :image-size="80" />
+        </div>
+        <div class="card-pagination">
+          <el-pagination layout="total, prev, pager, next" :total="total" :page-size="pageSize" :current-page="page" @current-change="handleCardPageChange" background />
+        </div>
+      </div>
+
+      <!-- 虚拟机（后端分页） -->
+      <div class="card" v-else>
+        <div v-loading="loading" class="server-card-grid">
+          <ServerVmCard
+            v-for="v in virtualServerList" :key="v.id"
+            :server="v" :host-manage-url="v.hostManageUrl" :can-edit="canEdit"
+            :is-selected="selectedServer?.id === v.id"
+            @click="openDrawer" @click-host="onVmHostClick" @edit="handleEdit" @delete="handleDelete"
+          />
+          <el-empty v-if="!loading && virtualServerList.length === 0" description="暂无虚拟机" :image-size="80" />
+        </div>
+        <div class="card-pagination">
+          <el-pagination layout="total, prev, pager, next" :total="total" :page-size="pageSize" :current-page="page" @current-change="handleCardPageChange" background />
+        </div>
+      </div>
+    </template>
+
+    <!-- ========== 树形列表模式（字段级信息着色） ========== -->
+    <div class="card" v-else>
+      <el-table
+        :data="treeData"
+        row-key="id"
+        :tree-props="{ children: 'children' }"
+        default-expand-all
+        v-loading="treeLoading"
+        border
+        size="small"
+        style="width: 100%"
       >
-        <template #serverType="{ row }">
-          <el-tag v-bind="getServerTypeTagAttrs(row.serverType)" size="small">
-            {{ row.serverType }}
-          </el-tag>
-        </template>
-        <template #config="{ row }">
-          <span class="config-text">{{ formatConfig(row) }}</span>
-        </template>
-        <template #expireDate="{ row }">
-          <el-tag v-if="getExpireDays(row.expireDate) !== null" :type="getExpireTagType(row.expireDate)" size="small">
-            {{ getExpireLabel(row.expireDate) }}
-          </el-tag>
-          <span v-else class="text-secondary">-</span>
-        </template>
-        <template #password="{ row }">
-          <SensitiveValue :value="row.password" />
-        </template>
-        <template #dbAccount="{ row }">
-          <SensitiveValue :value="row.dbAccount" />
-        </template>
-        <template #dbPassword="{ row }">
-          <SensitiveValue :value="row.dbPassword" />
-        </template>
-        <template #status="{ row }">
-          <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
-        </template>
-      </CrudTable>
+        <!-- 名称：平台语义色 -->
+        <el-table-column prop="name" label="名称" width="200">
+          <template #default="{ row }">
+            <button class="tree-name" :style="{ color: toneTextVar(row as ServerListItem) }" @click="openDrawer(row as ServerListItem)">{{ row.name }}</button>
+          </template>
+        </el-table-column>
+        <!-- 身份 -->
+        <el-table-column label="身份" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.isVirtual ? 'warning' : 'primary'" size="small" effect="light">{{ row.isVirtual ? '虚拟机' : '物理机' }}</el-tag>
+          </template>
+        </el-table-column>
+        <!-- 平台 -->
+        <el-table-column label="平台" width="100" align="center">
+          <template #default="{ row }">
+            <span v-if="platformOf(row as ServerListItem)" class="platform-tag" :class="platformOf(row as ServerListItem) === 'PVE' ? 'platform-tag--pve' : 'platform-tag--esxi'">{{ platformOf(row as ServerListItem) }}</span>
+            <el-tag v-else size="small" effect="plain">{{ row.serverType }}</el-tag>
+          </template>
+        </el-table-column>
+        <!-- 内网IP -->
+        <el-table-column label="内网IP" width="140">
+          <template #default="{ row }">
+            <div v-if="row.internalIp" class="tree-ip tree-ip--internal">
+              <el-icon><Monitor /></el-icon>
+              <span class="ip-value">{{ row.internalIp }}</span>
+            </div>
+            <span v-else class="text-muted">—</span>
+          </template>
+        </el-table-column>
+        <!-- 外网IP -->
+        <el-table-column label="外网IP" width="140">
+          <template #default="{ row }">
+            <div v-if="row.externalIp" class="tree-ip tree-ip--external">
+              <el-icon><Connection /></el-icon>
+              <span class="ip-value">{{ row.externalIp }}</span>
+            </div>
+            <span v-else class="text-muted">—</span>
+          </template>
+        </el-table-column>
+        <!-- 配置摘要 -->
+        <el-table-column label="配置摘要" min-width="220">
+          <template #default="{ row }">
+            <div class="tree-specs">
+              <span class="tree-spec"><span class="spec-label spec-label--cpu">CPU</span><span class="spec-val">{{ specCpuOf(row as ServerListItem) }}</span></span>
+              <span class="tree-spec"><span class="spec-label spec-label--memory">内存</span><span class="spec-val">{{ specMemOf(row as ServerListItem) }}</span></span>
+              <span class="tree-spec"><span class="spec-label spec-label--disk">磁盘</span><span class="spec-val">{{ specDiskOf(row as ServerListItem) }}</span></span>
+            </div>
+          </template>
+        </el-table-column>
+        <!-- 宿主机 -->
+        <el-table-column label="宿主机" width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <button v-if="row.hostServerName" class="tree-link" @click="onVmHostClick(row as ServerListItem)">{{ row.hostServerName }}</button>
+            <button v-else-if="!row.isVirtual && row.vmCount > 0" class="tree-link" @click="openDrawer(row as ServerListItem)">{{ row.vmCount }} 台虚拟机</button>
+            <span v-else class="text-muted">—</span>
+          </template>
+        </el-table-column>
+        <!-- 状态 -->
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusTagType(row.status)" size="small" effect="light">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <!-- 操作 -->
+        <el-table-column v-if="canEdit" label="操作" width="240" fixed="right" align="center">
+          <template #default="{ row }">
+            <el-button size="small" @click="goDetail(row.id)">详情</el-button>
+            <el-button size="small" @click="openPasswordDialog(row)">密码</el-button>
+            <el-button size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </div>
+
+    <!-- ========== 右侧详情 Drawer ========== -->
+    <AssetDetailDrawer v-model="drawerVisible" :title="selectedServer?.name" :can-edit="canEdit" @close="onDrawerClose">
+      <template #header>
+        <el-tag :type="selectedServer?.isVirtual ? 'warning' : 'primary'" size="small">{{ selectedServer?.isVirtual ? '虚拟机' : '物理机' }}</el-tag>
+        <span v-if="selectedServer && platformOf(selectedServer)" class="platform-tag" :class="platformOf(selectedServer) === 'PVE' ? 'platform-tag--pve' : 'platform-tag--esxi'">{{ platformOf(selectedServer) }}</span>
+        <el-tag v-if="selectedServer" :type="getStatusTagType(selectedServer.status)" size="small">{{ selectedServer.status }}</el-tag>
+      </template>
+
+      <!-- 基础信息 -->
+      <el-descriptions v-if="selectedServer" :column="2" border size="small">
+        <el-descriptions-item label="类型">{{ selectedServer.serverType }}</el-descriptions-item>
+        <el-descriptions-item label="厂商">{{ selectedServer.manufacturer || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="型号">{{ selectedServer.model || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="序列号">{{ selectedServer.serialNo || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="内网IP">{{ selectedServer.internalIp || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="外网IP">{{ selectedServer.externalIp || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="操作系统">{{ selectedServer.os || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="用途">{{ selectedServer.purpose || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="到期日期">{{ selectedServer.expireDate || '—' }}</el-descriptions-item>
+        <el-descriptions-item :label="selectedServer.isVirtual ? '宿主机管理地址' : '管理地址'">
+          <el-link v-if="manageUrlOf(selectedServer)" type="primary" :href="manageUrlOf(selectedServer)!" target="_blank" rel="noopener">打开管理地址</el-link>
+          <span v-else>—</span>
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <!-- 物理机：紧凑 VM 行 -->
+      <template v-if="selectedServer && !selectedServer.isVirtual">
+        <div class="drawer-section-title">全部虚拟机（{{ vmListOf(selectedServer).length }} 台）</div>
+        <div class="vm-compact-list">
+          <button v-for="vm in visibleDrawerVms(selectedServer)" :key="vm.id" class="vm-compact-row" @click="openDrawer(vm)">
+            <div class="vm-row-1">
+              <span class="vm-name-text">{{ vm.name }}</span>
+              <el-tag :type="getStatusTagType(vm.status)" size="small">{{ vm.status }}</el-tag>
+            </div>
+            <div class="vm-row-2">{{ vm.internalIp || '—' }} · {{ vm.purpose || '—' }}</div>
+            <div class="vm-row-3">{{ vm.cpuCoresAllocated ?? '—' }}核 / {{ vm.memoryAllocatedGB ?? '—' }}GB / {{ vm.diskAllocatedGB ?? '—' }}GB</div>
+          </button>
+          <button v-if="vmListOf(selectedServer).length > 8" class="vm-compact-more" @click="goDetail(selectedServer.id)">
+            查看全部虚拟机（{{ vmListOf(selectedServer).length }} 台）
+          </button>
+        </div>
+      </template>
+
+      <!-- 虚拟机：宿主信息 -->
+      <template v-else-if="selectedServer">
+        <div class="drawer-section-title">所属宿主机</div>
+        <div class="drawer-host-card" v-if="hostOf(selectedServer)">
+          <button class="tree-link" @click="openDrawer(hostOf(selectedServer)!)">{{ hostOf(selectedServer)!.name }}</button>
+          <span class="drawer-host-meta">{{ hostOf(selectedServer)!.internalIp }} · {{ platformOf(hostOf(selectedServer)!) || '—' }}</span>
+        </div>
+        <el-empty v-else description="未关联宿主机" :image-size="40" />
+      </template>
+
+      <!-- 底部操作区 -->
+      <template #footer>
+        <el-button size="small" @click="goDetail(selectedServer!.id)">详情页</el-button>
+        <el-button v-if="canEdit" size="small" @click="handleEdit(selectedServer!)">编辑</el-button>
+        <el-button v-if="canEdit" size="small" @click="openPasswordDialog(selectedServer!)">密码管理</el-button>
+        <a v-if="selectedServer && manageUrlOf(selectedServer)" :href="manageUrlOf(selectedServer)!" target="_blank" rel="noopener" class="btn-link">进入管理</a>
+      </template>
+    </AssetDetailDrawer>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="780px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="800px" destroy-on-close>
       <el-form :model="formData" label-width="100px" :rules="rules" ref="formRef">
+        <el-alert type="info" :closable="false" show-icon class="form-alert">
+          <template #title>密码不在此处填写：登录/数据库密码通过"密码管理"独立操作（仅管理员/操作员）</template>
+        </el-alert>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="名称" prop="name">
-              <el-input v-model="formData.name" placeholder="如：财务数据库服务器" />
+            <el-form-item label="身份" prop="isVirtual">
+              <el-radio-group v-model="formData.isVirtual">
+                <el-radio :value="false">物理机</el-radio>
+                <el-radio :value="true">虚拟机</el-radio>
+              </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="12">
+            <el-form-item label="名称" prop="name">
+              <el-input v-model="formData.name" placeholder="如：机房PVE宿主机 / 财务虚拟机" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row v-if="formData.isVirtual" :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="宿主机" prop="hostServerId">
+              <el-select v-model="formData.hostServerId" filterable placeholder="选择物理宿主机" style="width: 100%" @change="onHostChange">
+                <el-option v-for="h in hostOptions" :key="h.id" :label="h.name" :value="h.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="虚拟化平台">
+          <el-select v-model="formData.hypervisor" placeholder="PVE/ESXi（物理机可填；虚拟机继承宿主机）" clearable style="width: 100%" :disabled="formData.isVirtual && !!formData.hostServerId">
+            <el-option v-for="h in hypervisorOptions" :key="h" :label="h" :value="h" />
+          </el-select>
+          <div v-if="formData.isVirtual" class="form-tip">虚拟机平台继承自宿主机（只读）</div>
+        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
             <el-form-item label="服务器类型" prop="serverType">
-              <el-select v-model="formData.serverType" placeholder="选择或输入类型" filterable allow-create default-first-option style="width: 100%" @change="onServerTypeChange">
+              <el-select v-model="formData.serverType" placeholder="选择或输入" filterable allow-create default-first-option style="width: 100%" @change="onServerTypeChange">
                 <el-option v-for="t in serverTypeOptions" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="状态" prop="status">
+              <el-radio-group v-model="formData.status">
+                <el-radio v-for="s in serverStatusOptions" :key="s" :value="s">{{ s }}</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="厂商">
+              <el-input v-model="formData.manufacturer" placeholder="戴尔/惠普/浪潮/华为等" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="型号">
+              <el-input v-model="formData.model" placeholder="如：PowerEdge R740" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="序列号">
+              <el-input v-model="formData.serialNo" placeholder="可空；留空提交为 NULL" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="RAID">
+              <el-select v-model="formData.raidType" placeholder="RAID0/1/5/10/无" clearable style="width: 100%">
+                <el-option v-for="r in ['RAID0', 'RAID1', 'RAID5', 'RAID10', '无']" :key="r" :label="r" :value="r" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -103,27 +346,46 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="内网IP">
-              <el-input v-model="formData.internalIp" placeholder="如：192.168.0.100（云服务器可留空）" />
+              <el-input v-model="formData.internalIp" placeholder="如：192.168.0.100" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="外网IP">
-              <el-input v-model="formData.externalIp" placeholder="如：SERVER_IP（本地可留空）" />
+              <el-input v-model="formData.externalIp" placeholder="云服务器公网IP，本地可空" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="端口" prop="port">
-              <el-input v-model="formData.port" placeholder="如：22（SSH默认端口）" />
+              <el-input v-model="formData.port" placeholder="如：22" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="操作系统">
-              <el-input v-model="formData.os" placeholder="如：CentOS 7.9 / Ubuntu 22.04" />
+              <el-input v-model="formData.os" placeholder="如：CentOS 7.9" />
             </el-form-item>
           </el-col>
         </el-row>
+        <template v-if="formData.isVirtual">
+          <el-row :gutter="16">
+            <el-col :span="8">
+              <el-form-item label="分配CPU">
+                <el-input-number v-model="formData.cpuCoresAllocated" :min="0" :precision="0" :controls="false" placeholder="核" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="分配内存GB">
+                <el-input-number v-model="formData.memoryAllocatedGB" :min="0" :precision="2" :controls="false" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="分配磁盘GB">
+                <el-input-number v-model="formData.diskAllocatedGB" :min="0" :precision="2" :controls="false" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="CPU型号">
@@ -144,7 +406,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="硬盘类型">
-              <el-select v-model="formData.diskType" placeholder="选择硬盘类型" clearable style="width: 100%">
+              <el-select v-model="formData.diskType" placeholder="SSD/HDD" clearable style="width: 100%">
                 <el-option v-for="t in diskTypeOptions" :key="t" :label="t" :value="t" />
               </el-select>
             </el-form-item>
@@ -158,14 +420,14 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="数据盘">
-              <el-input v-model="formData.dataDiskSize" placeholder="如：1TB（无数据盘可留空）" />
+              <el-input v-model="formData.dataDiskSize" placeholder="如：1TB" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="云账号">
-              <el-input v-model="formData.cloudAccount" placeholder="如：demo@example.invalid（本地可留空）" />
+              <el-input v-model="formData.cloudAccount" placeholder="本地可空" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -176,51 +438,48 @@
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="用途" prop="purpose">
-              <el-input v-model="formData.purpose" placeholder="如：MySQL主数据库" />
+            <el-form-item label="保修到期">
+              <el-date-picker v-model="formData.warrantyEndDate" type="date" value-format="YYYY-MM-DD" placeholder="硬件保修到期" clearable style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="状态" prop="status">
-              <el-radio-group v-model="formData.status">
-                <el-radio v-for="s in serverStatusOptions" :key="s" :value="s">{{ s }}</el-radio>
-              </el-radio-group>
+            <el-form-item label="网卡信息">
+              <el-input v-model="formData.networkCards" placeholder="如：2×1G + 2×10G" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="登录账号" prop="account">
-              <el-input v-model="formData.account" placeholder="如：root" />
+            <el-form-item label="用途" prop="purpose">
+              <el-input v-model="formData.purpose" placeholder="如：MySQL主数据库" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="登录密码" prop="password">
-              <el-input v-model="formData.password" type="password" show-password placeholder="请输入登录密码" />
+            <el-form-item label="登录账号">
+              <el-input v-model="formData.account" placeholder="如：root" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="数据库账号">
-              <el-input v-model="formData.dbAccount" type="password" show-password placeholder="无数据库可留空" />
+              <el-input v-model="formData.dbAccount" placeholder="无数据库可空" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="数据库密码">
-              <el-input v-model="formData.dbPassword" type="password" show-password placeholder="无数据库可留空" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="数据库端口">
-              <el-input v-model="formData.dbPort" placeholder="如：3306（无数据库可留空）" />
+              <el-input v-model="formData.dbPort" placeholder="如：3306" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="备注">
           <el-input v-model="formData.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
+        </el-form-item>
+        <el-form-item v-if="!formData.isVirtual" label="管理地址">
+          <el-input v-model="formData.manageUrl" placeholder="如 https://192.168.1.10:8006 （宿主机控制台，进入管理时新窗口打开）" />
+        </el-form-item>
+        <el-form-item v-else label="管理地址">
+          <span class="text-secondary">虚拟机不保存管理地址；入口来自宿主机（见详情页"宿主机管理地址"）</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -228,125 +487,223 @@
         <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 密码管理弹窗 -->
+    <el-dialog v-model="passwordDialogVisible" title="密码管理" width="480px" destroy-on-close>
+      <el-form :model="passwordForm" label-width="100px">
+        <el-form-item label="登录密码">
+          <el-input v-model="passwordForm.password" type="password" show-password :placeholder="passwordMode === 'view' ? '点击查看' : '留空保持不变'" />
+        </el-form-item>
+        <el-form-item label="数据库密码">
+          <el-input v-model="passwordForm.dbPassword" type="password" show-password :placeholder="passwordMode === 'view' ? '点击查看' : '留空保持不变'" />
+        </el-form-item>
+        <el-alert type="info" :closable="false" show-icon>
+          <template #title>{{ passwordMode === 'view' ? '查看模式：显示当前保存的密码' : '更新模式：留空字段保持不变，非空则覆盖' }}</template>
+        </el-alert>
+      </el-form>
+      <template #footer>
+        <el-button @click="passwordDialogVisible = false">关闭</el-button>
+        <el-button v-if="passwordMode === 'view'" @click="switchPasswordMode">切换为更新</el-button>
+        <el-button v-else type="primary" :loading="savingPassword" @click="handleSavePassword">保存密码</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Monitor, HomeFilled, Cloudy, WarningFilled } from '@element-plus/icons-vue'
-import {
-  useServerData, serverTypeOptions, getServerTypeTagAttrs, assignCustomTypeColor,
-  getExpireDays, diskTypeOptions,
-  type ServerItem,
-} from '~/composables/useServerData'
+import { useDebounceFn } from '@vueuse/core'
+import { Plus, Monitor, Connection, HomeFilled, Cloudy, WarningFilled, InfoFilled } from '@element-plus/icons-vue'
+import { useServerWorkspace } from '~/composables/useServerWorkspace'
+import type { ServerItem, ServerListItem } from '~/types/server'
+import { serverVisualTone, platformOf } from '~/utils/server-visual-tone'
+import { buildServerTree, type ServerTreeNode } from '~/utils/server-tree'
 import { getApiErrorMessage } from '~/composables/useApi'
 
-const { serverList, loading, serverStatusOptions, expiringSoonCount, fetchServers, addServer, updateServer, deleteServer } = useServerData()
+const {
+  query, resetQuery, buildQuery,
+  treeError, workspaceRefreshError,
+  serverList, serverTree, treeLoading, total, page, pageSize, loading,
+  physicalCount, virtualCount, expiringSoonCount, warrantyExpiringCount,
+  hostOptions, statsUnavailable,
+  refreshWorkspace,
+  fetchServers, fetchServerTree, fetchServerStats, fetchPhysicalHosts,
+  fetchServerDetail, addServer, updateServer, deleteServer,
+  fetchServerPassword, updateServerPassword,
+  serverTypeOptions, serverStatusOptions, hypervisorOptions, diskTypeOptions,
+  getServerTypeTagAttrs, assignCustomTypeColor, getStatusTagType, getExpireDays,
+} = useServerWorkspace()
 
-onMounted(() => {
-  fetchServers()
+// —— 角色 ——
+const canEdit = ref(false)
+const route = useRoute()
+const router = useRouter()
+
+onMounted(async () => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
+  await refreshWorkspace()
+  // 详情页"新增虚拟机"跳转：自动带入宿主机
+  if (route.query.addVirtual) {
+    handleAddVirtual(Number(route.query.addVirtual))
+    navigateTo('/it/servers', { replace: true })
+  }
 })
 
-// —— CSS 变量颜色引用 ——
+// —— CSS 变量 ——
 const vars = {
-  primary: 'var(--color-primary)',
-  primaryLight: 'var(--color-primary-light)',
-  success: 'var(--color-success)',
-  successLight: 'var(--color-success-light)',
-  info: 'var(--color-info)',
-  infoLight: 'var(--color-info-light)',
-  warning: 'var(--color-warning)',
-  warningLight: 'var(--color-warning-light)',
-  danger: 'var(--color-danger)',
-  dangerLight: 'var(--color-danger-light)',
+  primary: 'var(--color-primary)', primaryLight: 'var(--color-primary-light)',
+  success: 'var(--color-success)', successLight: 'var(--color-success-light)',
+  info: 'var(--color-info)', infoLight: 'var(--color-info-light)',
+  danger: 'var(--color-danger)', dangerLight: 'var(--color-danger-light)',
 }
 
-// —— 概览统计 ——
-const localCount = computed(() => serverList.value.filter(s => s.serverType === '本地').length)
-const cloudCount = computed(() => serverList.value.filter(s => s.serverType !== '本地').length)
+// —— 展示模式 ——
+const viewMode = ref<'card' | 'tree'>('card')
 
-// —— 辅助函数 ——
-function formatConfig(row: ServerItem): string {
-  const parts: string[] = []
-  if (row.cpuCores) parts.push(row.cpuCores)
-  if (row.memorySize) parts.push(row.memorySize)
-  const disks: string[] = []
-  if (row.systemDiskSize) disks.push(row.systemDiskSize)
-  if (row.dataDiskSize) disks.push(row.dataDiskSize)
-  if (disks.length) parts.push(disks.join('+'))
-  if (row.diskType) parts.push(row.diskType)
-  return parts.join('/') || '-'
+// —— 卡片前端分页（全部 Tab） ——
+const CARD_PAGE_SIZE = 12
+const cardPage = ref(1)
+watch(() => query.activeTab, () => { cardPage.value = 1 })
+
+// —— 筛选与搜索 ——
+const debouncedSearch = useDebounceFn(() => reloadPage(), 300)
+
+function onTabChange() {
+  cardPage.value = 1
+  query.page = 1
+  fetchServers(buildQuery())
 }
 
-function getExpireTagType(date: string): 'info' | 'danger' | 'warning' {
+function handleFilterChange() {
+  query.page = 1
+  cardPage.value = 1
+  fetchServers(buildQuery())
+}
+
+function reloadPage() {
+  query.page = 1
+  cardPage.value = 1
+  fetchServers(buildQuery())
+}
+
+function handleCardPageChange(p: number) {
+  query.page = p
+  fetchServers(buildQuery())
+}
+
+// —— 树形视图数据：前端筛选后组树 ——
+const treeData = computed<ServerTreeNode[]>(() => {
+  const kw = query.keyword.trim().toLowerCase()
+  const list = serverTree.value.filter(s => {
+    if (query.status && s.status !== query.status) return false
+    if (query.hypervisor && (s.hypervisor || '') !== query.hypervisor) return false
+    if (query.hostServerId) {
+      // 宿主机筛选：匹配宿主本身或其下 VM
+      if (s.id !== query.hostServerId && s.hostServerId !== query.hostServerId) return false
+    }
+    if (kw) {
+      const hit = [s.name, s.internalIp, s.externalIp, s.purpose, s.account, s.remark]
+        .filter(Boolean).some(v => String(v).toLowerCase().includes(kw))
+      if (!hit) return false
+    }
+    return true
+  })
+  return buildServerTree(list)
+})
+
+// —— 卡片数据 ——
+const cardHosts = computed(() => treeData.value.filter(n => !n.isVirtual))
+const filteredOrphanVms = computed(() => treeData.value.filter(n => n.isVirtual))
+const cardPageHosts = computed(() => cardHosts.value.slice((cardPage.value - 1) * CARD_PAGE_SIZE, cardPage.value * CARD_PAGE_SIZE))
+const physicalServerList = computed(() => serverList.value.filter(s => !s.isVirtual))
+const virtualServerList = computed(() => serverList.value.filter(s => s.isVirtual))
+
+// —— 筛选结果计数 ——
+const filterResultCount = computed(() => {
+  if (query.activeTab === 'all') return cardHosts.value.length + filteredOrphanVms.value.length
+  return total.value
+})
+
+// —— 详情抽屉 ——
+const drawerVisible = ref(false)
+const selectedServer = ref<ServerListItem | null>(null)
+
+function openDrawer(server: ServerListItem) {
+  selectedServer.value = server
+  drawerVisible.value = true
+}
+
+function onDrawerClose() {
+  selectedServer.value = null
+}
+
+/** VM 卡/树宿主机名称点击：打开宿主机 Drawer */
+function onVmHostClick(vm: ServerListItem) {
+  const host = hostOf(vm)
+  if (host) {
+    selectedServer.value = host
+    drawerVisible.value = true
+  }
+}
+
+function vmListOf(host: ServerListItem): ServerListItem[] {
+  return serverTree.value.filter(s => s.isVirtual && s.hostServerId === host.id)
+}
+
+function visibleDrawerVms(host: ServerListItem): ServerListItem[] {
+  return vmListOf(host).slice(0, 8)
+}
+
+function hostOf(vm: ServerListItem): ServerListItem | null {
+  if (!vm.isVirtual || !vm.hostServerId) return null
+  return serverTree.value.find(s => s.id === vm.hostServerId) ?? null
+}
+
+function manageUrlOf(server: ServerListItem): string | null {
+  if (server.isVirtual) return server.hostManageUrl
+  return server.manageUrl
+}
+
+// —— 树形/抽屉辅助函数 ——
+function toneTextVar(server: ServerListItem): string {
+  const { tone } = serverVisualTone(server)
+  return `var(--tone-${tone}-text)`
+}
+
+function specCpuOf(s: ServerListItem): string {
+  if (s.isVirtual) return s.cpuCoresAllocated != null ? `${s.cpuCoresAllocated}核` : '—'
+  return s.cpuCores || '—'
+}
+function specMemOf(s: ServerListItem): string {
+  if (s.isVirtual) return s.memoryAllocatedGB != null ? `${s.memoryAllocatedGB}GB` : '—'
+  return s.memorySize || '—'
+}
+function specDiskOf(s: ServerListItem): string {
+  if (s.isVirtual) return s.diskAllocatedGB != null ? `${s.diskAllocatedGB}GB` : '—'
+  return [s.systemDiskSize, s.dataDiskSize].filter(Boolean).join(' + ') || '—'
+}
+
+// —— 详情跳转 ——
+function goDetail(id: number | null | undefined) {
+  if (!id) return
+  router.push(`/it/servers/${id}`).catch(() => {
+    ElMessage.error('跳转详情失败，请重试')
+  })
+}
+
+// —— 到期日期 ——
+function getExpireTagType(date: string | null): 'info' | 'danger' | 'warning' {
   const days = getExpireDays(date)
   if (days === null) return 'info'
-  if (days <= 0) return 'danger'
   if (days <= 30) return 'danger'
   if (days <= 90) return 'warning'
   return 'info'
-}
-
-function getExpireLabel(date: string): string {
-  const days = getExpireDays(date)
-  if (days === null) return '-'
-  if (days <= 0) return `已过期${Math.abs(days)}天`
-  return `${date} (${days}天)`
-}
-
-// —— 列头筛选（类型从数据动态生成）——
-const serverTypeFilters = computed(() =>
-  [...new Set(serverList.value.map(s => s.serverType))]
-    .map(v => ({ text: v, value: v }))
-)
-const osFilters = computed(() =>
-  [...new Set(serverList.value.map(s => s.os).filter(Boolean))]
-    .map(v => ({ text: v, value: v }))
-)
-const purposeFilters = computed(() =>
-  [...new Set(serverList.value.map(s => s.purpose).filter(Boolean))]
-    .map(v => ({ text: v, value: v }))
-)
-const statusFilters = [
-  { text: '正常', value: '正常' },
-  { text: '停用', value: '停用' },
-]
-
-const columns = computed(() => [
-  { prop: 'name', label: '名称', width: 160 },
-  { prop: 'serverType', label: '类型', width: 100, align: 'center' as const, slot: 'serverType', filters: serverTypeFilters.value, filterMethod: (v: any, r: any) => r.serverType === v },
-  { prop: 'internalIp', label: '内网IP', width: 130 },
-  { prop: 'externalIp', label: '外网IP', width: 130 },
-  { prop: 'port', label: '端口', width: 80, align: 'center' as const },
-  { prop: 'config', label: '配置', width: 180, slot: 'config' },
-  { prop: 'os', label: '操作系统', width: 130, filters: osFilters.value, filterMethod: (v: any, r: any) => r.os === v },
-  { prop: 'purpose', label: '用途', minWidth: 160, filters: purposeFilters.value, filterMethod: (v: any, r: any) => r.purpose === v },
-  { prop: 'expireDate', label: '到期日期', width: 150, align: 'center' as const, slot: 'expireDate' },
-  { prop: 'account', label: '登录账号', width: 110 },
-  { prop: 'password', label: '登录密码', width: 160, slot: 'password' },
-  { prop: 'dbAccount', label: '数据库账号', width: 160, slot: 'dbAccount' },
-  { prop: 'dbPassword', label: '数据库密码', width: 160, slot: 'dbPassword' },
-  { prop: 'dbPort', label: '数据库端口', width: 100, align: 'center' as const },
-  { prop: 'status', label: '状态', width: 80, align: 'center' as const, slot: 'status', filters: statusFilters, filterMethod: (v: any, r: any) => r.status === v },
-  { prop: 'remark', label: '备注', minWidth: 140 },
-])
-
-// —— 搜索 ——
-const filterKeyword = ref('')
-
-const filteredServers = computed(() => {
-  if (!filterKeyword.value) return serverList.value
-  const kw = filterKeyword.value.toLowerCase()
-  return serverList.value.filter(s => {
-    const haystack = [s.name, s.cloudAccount, s.internalIp, s.externalIp, s.os, s.port, s.purpose, s.account, s.dbPort, s.remark]
-      .filter(Boolean).join(' ').toLowerCase()
-    return haystack.includes(kw)
-  })
-})
-
-// —— 类型变更时分配自定义颜色 ——
-function onServerTypeChange(val: string) {
-  assignCustomTypeColor(val)
 }
 
 // —— 弹窗 ——
@@ -355,58 +712,90 @@ const dialogTitle = ref('')
 const saving = ref(false)
 const formRef = ref()
 
-const formData = reactive<ServerItem>({
-  id: 0,
-  name: '',
-  serverType: '本地',
-  cloudAccount: '',
-  internalIp: '',
-  externalIp: '',
-  port: '22',
-  cpuModel: '',
-  cpuCores: '',
-  memorySize: '',
-  systemDiskSize: '',
-  dataDiskSize: '',
-  diskType: '',
-  os: '',
-  expireDate: '',
-  purpose: '',
-  account: '',
-  password: '',
-  dbAccount: '',
-  dbPassword: '',
-  dbPort: '',
-  remark: '',
-  status: '正常',
+const formData = reactive<Record<string, any>>({
+  id: 0, name: '', serverType: '本地', cloudAccount: '',
+  internalIp: '', externalIp: '', port: '22',
+  cpuModel: '', cpuCores: '', memorySize: '', systemDiskSize: '', dataDiskSize: '', diskType: '',
+  os: '', expireDate: null, purpose: '', account: '', dbAccount: '', dbPort: '',
+  remark: '', manageUrl: null, status: '正常',
+  manufacturer: '', model: '', serialNo: '', raidType: '', networkCards: '', warrantyEndDate: null,
+  isVirtual: false, hypervisor: '', hostServerId: null,
+  cpuCoresAllocated: null, memoryAllocatedGB: null, diskAllocatedGB: null,
 })
 
 const rules = {
   name: [{ required: true, message: '请输入服务器名称', trigger: 'blur' }],
   serverType: [{ required: true, message: '请选择服务器类型', trigger: 'change' }],
   purpose: [{ required: true, message: '请输入用途', trigger: 'blur' }],
-  account: [{ required: true, message: '请输入登录账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入登录密码', trigger: 'blur' }],
-  status: [{ required: true, message: '请选择状态', trigger: 'change' }],
+  hostServerId: [{ required: true, message: '虚拟机必须选择宿主机', trigger: 'change' }],
 }
 
-function handleAdd() {
-  dialogTitle.value = '新增服务器'
+function onHostChange(hostId: number | undefined) {
+  if (!hostId) return
+  const host = hostOptions.value.find((h) => h.id === hostId)
+  if (host?.hypervisor) {
+    formData.hypervisor = host.hypervisor
+  }
+}
+
+function onServerTypeChange(val: string) { assignCustomTypeColor(val) }
+
+function buildPayload(): Record<string, any> {
+  const { id: _id, password: _p, dbPassword: _d, ...rest } = formData
+  const payload: Record<string, any> = { ...rest }
+  payload.serialNo = payload.serialNo === '' ? null : payload.serialNo
+  payload.hypervisor = (payload.hypervisor === '' || payload.hypervisor === null) ? null : payload.hypervisor
+  payload.raidType = payload.raidType === '' ? null : payload.raidType
+  payload.hostServerId = payload.isVirtual ? (payload.hostServerId || null) : null
+  if (payload.isVirtual) {
+    payload.manageUrl = null
+  } else {
+    payload.cpuCoresAllocated = null
+    payload.memoryAllocatedGB = null
+    payload.diskAllocatedGB = null
+  }
+  return payload
+}
+
+function resetForm(isVirtual: boolean) {
   Object.assign(formData, {
     id: 0, name: '', serverType: '本地', cloudAccount: '',
     internalIp: '', externalIp: '', port: '22',
     cpuModel: '', cpuCores: '', memorySize: '', systemDiskSize: '', dataDiskSize: '', diskType: '',
-    os: '', expireDate: '',
-    purpose: '', account: '', password: '', dbAccount: '', dbPassword: '', dbPort: '',
-    remark: '', status: '正常',
+    os: '', expireDate: null, purpose: '', account: '', dbAccount: '', dbPort: '',
+    remark: '', manageUrl: null, status: '正常',
+    manufacturer: '', model: '', serialNo: '', raidType: '', networkCards: '', warrantyEndDate: null,
+    isVirtual, hypervisor: '', hostServerId: null,
+    cpuCoresAllocated: null, memoryAllocatedGB: null, diskAllocatedGB: null,
   })
+}
+
+function handleAdd() {
+  dialogTitle.value = '新增服务器'
+  resetForm(false)
+  dialogVisible.value = true
+}
+
+function handleAddVirtual(hostId?: number) {
+  dialogTitle.value = '新增虚拟机'
+  resetForm(true)
+  if (hostId) formData.hostServerId = hostId
   dialogVisible.value = true
 }
 
 function handleEdit(row: any) {
   const s = row as ServerItem
   dialogTitle.value = '编辑服务器'
-  Object.assign(formData, s)
+  resetForm(s.isVirtual)
+  Object.assign(formData, s, {
+    expireDate: s.expireDate || null,
+    warrantyEndDate: s.warrantyEndDate || null,
+    serialNo: s.serialNo || '',
+    manageUrl: s.manageUrl || '',
+    hypervisor: s.hypervisor || '',
+    raidType: s.raidType || '',
+    hostServerId: s.hostServerId ?? null,
+  })
   dialogVisible.value = true
 }
 
@@ -415,15 +804,18 @@ function handleSave() {
     if (!valid) return
     saving.value = true
     try {
+      const payload = buildPayload()
       if (formData.id === 0) {
-        const { id: _omitId, ...serverData } = formData
-        await addServer(serverData)
+        await addServer(payload)
         ElMessage.success('新增成功')
       } else {
-        await updateServer(formData.id, { ...formData })
+        await updateServer(formData.id, payload)
         ElMessage.success('编辑成功')
       }
       dialogVisible.value = false
+      // 仅当刷新成功时才同步 Drawer，避免用旧 tree/list 覆盖已确认数据
+      const ok = await refreshWorkspace()
+      if (ok) syncDrawerAfterRefresh()
     } catch (error) {
       ElMessage.error(getApiErrorMessage(error))
     } finally {
@@ -435,78 +827,228 @@ function handleSave() {
 async function handleDelete(row: any) {
   const s = row as ServerItem
   try {
-    await ElMessageBox.confirm(`确定要删除"${s.name}"吗？`, '提示', {
+    await ElMessageBox.confirm(`确定要删除"${s.name}"吗？${s.isVirtual ? '' : '（如仍有虚拟机将无法删除）'}`, '提示', {
       confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning',
     })
     await deleteServer(s.id)
     ElMessage.success('删除成功')
+    // 仅当刷新成功时才同步 Drawer，避免用旧 tree/list 覆盖已确认数据
+    const ok = await refreshWorkspace()
+    if (ok) syncDrawerAfterRefresh()
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error(getApiErrorMessage(error))
-    }
+    if (error !== 'cancel') ElMessage.error(getApiErrorMessage(error))
   }
 }
 
-async function handleBatchDelete(rows: any[]) {
-  const ids = (rows as ServerItem[]).map(r => r.id)
+/** 刷新后同步 Drawer：如果 selectedServer 已不存在则关闭 */
+function syncDrawerAfterRefresh() {
+  if (!drawerVisible.value || !selectedServer.value) return
+  const updated = serverTree.value.find(s => s.id === selectedServer.value!.id)
+    ?? serverList.value.find(s => s.id === selectedServer.value!.id)
+  if (updated) {
+    selectedServer.value = updated
+  } else {
+    drawerVisible.value = false
+    selectedServer.value = null
+  }
+}
+
+// —— 密码管理 ——
+const passwordDialogVisible = ref(false)
+const passwordMode = ref<'view' | 'update'>('view')
+const savingPassword = ref(false)
+const passwordForm = reactive({ password: '', dbPassword: '' })
+let passwordTarget: ServerItem | null = null
+
+async function openPasswordDialog(row: any) {
+  passwordTarget = row as ServerItem
+  passwordMode.value = 'view'
+  passwordForm.password = ''
+  passwordForm.dbPassword = ''
+  passwordDialogVisible.value = true
   try {
-    for (const id of ids) {
-      await deleteServer(id)
-    }
-    ElMessage.success(`已删除 ${ids.length} 项`)
+    const data = await fetchServerPassword(passwordTarget.id)
+    passwordForm.password = data.password
+    passwordForm.dbPassword = data.dbPassword
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error))
   }
 }
 
-// —— 服务器类型行底色 ——
-const serverTypeBgMap: Record<string, string> = {
-  '本地': 'server-type-local',
-  '阿里云': 'server-type-aliyun',
-  '腾讯云': 'server-type-tencent',
-  '华为云': 'server-type-huawei',
-}
-function getServerRowClass({ row }: { row: any }) {
-  return serverTypeBgMap[row.serverType] || 'server-type-other'
+function switchPasswordMode() {
+  passwordMode.value = 'update'
+  passwordForm.password = ''
+  passwordForm.dbPassword = ''
 }
 
-// —— 批量复制（Tab分隔，可粘贴Excel，排除敏感字段）——
-function handleBatchCopy(rows: any[]) {
-  if (rows.length === 0) {
-    ElMessage.warning('请先选择要复制的行')
-    return
+async function handleSavePassword() {
+  if (!passwordTarget) return
+  savingPassword.value = true
+  try {
+    await updateServerPassword(passwordTarget.id, {
+      ...(passwordForm.password ? { password: passwordForm.password } : {}),
+      ...(passwordForm.dbPassword ? { dbPassword: passwordForm.dbPassword } : {}),
+    })
+    ElMessage.success('密码已更新')
+    passwordDialogVisible.value = false
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error))
+  } finally {
+    savingPassword.value = false
   }
-  const headers = ['名称', '类型', '内网IP', '外网IP', '端口', '配置', '操作系统', '用途', '到期日期', '登录账号', '状态', '备注']
-  const lines = (rows as ServerItem[]).map(row => [
-    row.name, row.serverType, row.internalIp, row.externalIp, row.port,
-    formatConfig(row), row.os, row.purpose, row.expireDate,
-    row.account, row.status, row.remark,
-  ].join('\t'))
-  const text = [headers.join('\t'), ...lines].join('\n')
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success(`已复制 ${rows.length} 行数据（可粘贴到Excel）`)
-  }).catch(() => {
-    ElMessage.error('复制失败，请重试')
-  })
 }
 </script>
 
 <style scoped>
-.config-text {
+.quick-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--font-size-small);
   color: var(--text-secondary);
-  white-space: nowrap;
+  padding: 0 2px;
+}
+.quick-tip .el-icon { color: var(--color-info); }
+
+.stat-row { margin-bottom: 0; }
+
+.filter-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tab-group { margin-right: 16px; }
+.view-mode { margin-left: auto; }
+.filter-count { font-size: var(--font-size-mini); color: var(--text-secondary); }
+
+/* —— 两列卡片网格 —— */
+.server-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-card);
+}
+@media (min-width: 1200px) {
+  .server-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-/* 服务器类型行底色 */
-:deep(.server-type-local > td) { background: var(--server-type-local-bg) !important; }
-:deep(.server-type-aliyun > td) { background: var(--server-type-aliyun-bg) !important; }
-:deep(.server-type-tencent > td) { background: var(--server-type-tencent-bg) !important; }
-:deep(.server-type-huawei > td) { background: var(--server-type-huawei-bg) !important; }
-:deep(.server-type-other > td) { background: var(--server-type-other-bg) !important; }
-:deep(.server-type-local:hover > td) { background: var(--server-type-local-hover) !important; }
-:deep(.server-type-aliyun:hover > td) { background: var(--server-type-aliyun-hover) !important; }
-:deep(.server-type-tencent:hover > td) { background: var(--server-type-tencent-hover) !important; }
-:deep(.server-type-huawei:hover > td) { background: var(--server-type-huawei-hover) !important; }
-:deep(.server-type-other:hover > td) { background: var(--server-type-other-hover) !important; }
+.card-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--spacing-card);
+}
+
+.form-alert { margin-bottom: 16px; }
+.form-tip {
+  font-size: var(--font-size-small, 12px);
+  color: var(--color-text-secondary, #909399);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+/* —— 树形列表信息着色 —— */
+.tree-name { font-weight: 500; cursor: pointer; background: none; border: none; padding: 0; font: inherit; text-align: left; color: inherit; }
+.tree-name:hover { text-decoration: underline; }
+.tree-name:focus-visible { outline: 1px solid var(--color-primary); border-radius: var(--radius-small); }
+.tree-link { color: var(--color-primary); cursor: pointer; text-decoration: none; background: none; border: none; padding: 0; font: inherit; text-align: left; }
+.tree-link:hover { text-decoration: underline; }
+.tree-link:focus-visible { outline: 1px solid var(--color-primary); border-radius: var(--radius-small); }
+
+.tree-ip { display: inline-flex; align-items: center; gap: 4px; }
+.tree-ip--internal .el-icon { color: var(--color-info); }
+.tree-ip--external .el-icon { color: var(--color-warning); }
+.ip-value { font-family: var(--font-family-mono); color: var(--text-primary); }
+
+.tree-specs { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tree-spec { display: inline-flex; align-items: baseline; gap: 3px; }
+.spec-label { font-size: var(--font-size-micro); color: var(--text-secondary); }
+.spec-label--cpu { color: var(--spec-cpu); }
+.spec-label--memory { color: var(--spec-memory); }
+.spec-label--disk { color: var(--spec-disk); }
+.spec-val { font-size: var(--font-size-small); color: var(--text-primary); }
+
+.text-muted { color: var(--text-placeholder); }
+.text-secondary { color: var(--text-secondary, #909399); }
+
+/* —— 抽屉内部 —— */
+.drawer-section-title {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-lighter);
+  padding-bottom: 8px;
+}
+
+.vm-compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vm-compact-row {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-page);
+  border: none;
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 0.15s ease;
+}
+.vm-compact-row:hover { background: var(--bg-hover); }
+.vm-compact-row:focus-visible { outline: 1px solid var(--color-primary); }
+.vm-row-1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vm-row-1 .vm-name-text { font-weight: 500; color: var(--color-primary); }
+.vm-row-2 { font-size: var(--font-size-mini); color: var(--text-secondary); margin-top: 2px; }
+.vm-row-3 { font-size: var(--font-size-micro); color: var(--text-placeholder); margin-top: 2px; }
+.vm-compact-more {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: var(--font-size-small);
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 8px;
+  border: none;
+  border-top: 1px solid var(--border-lighter);
+  background: none;
+  font-family: inherit;
+}
+.vm-compact-more:hover { text-decoration: underline; }
+.vm-compact-more:focus-visible { outline: 1px solid var(--color-primary); }
+
+.drawer-host-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-page);
+  border-radius: var(--radius-input);
+}
+.drawer-host-meta { font-size: var(--font-size-mini); color: var(--text-secondary); }
+
+/* —— 平台 Tag —— */
+.platform-tag {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--font-size-micro); font-weight: 600;
+  padding: 2px 8px; border-radius: var(--radius-small); border: 1px solid;
+}
+.platform-tag--pve { background: var(--tone-pve-bg); color: var(--tone-pve-text); border-color: var(--tone-pve-border); }
+.platform-tag--esxi { background: var(--tone-esxi-bg); color: var(--tone-esxi-text); border-color: var(--tone-esxi-border); }
+
+/* —— 按钮链接 —— */
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: var(--font-size-small);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary-border);
+  border-radius: var(--radius-btn);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.btn-link:hover { border-color: var(--color-primary); }
 </style>

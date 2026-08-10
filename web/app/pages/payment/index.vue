@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="支付管理">
+    <PageHeader
+      title="支付管理"
+      subtitle="门店支付配置与服务商管理"
+      description="管理各门店支付方式的商户号、密钥、APPID等配置项，支持自定义支付方式与服务商。敏感信息默认脱敏显示，点击眼睛图标可切换。服务商行底色：中国邮政=浅蓝、昂捷=浅橙、昂捷离线付=浅绿。每列列头可筛选，勾选多行后可批量复制（Tab分隔，可粘贴Excel）。"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAddConfig">
           <el-icon><Plus /></el-icon>
@@ -8,16 +12,6 @@
         </el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 支付配置：管理各门店支付方式的商户号、密钥、APPID等配置项，支持自定义支付方式与服务商</p>
-        <p>2. 敏感信息（密钥、退款密码）默认脱敏显示，点击眼睛图标可切换显示/隐藏</p>
-        <p>3. 服务商行底色：中国邮政=浅蓝、昂捷=浅橙、昂捷离线付=浅绿，便于按服务商浏览</p>
-        <p>4. 每列列头可筛选，勾选多行后可批量复制（Tab分隔，可粘贴Excel）</p>
-      </div>
-    </el-alert>
 
     <!-- 概览卡片 -->
     <el-row :gutter="16" class="stat-row">
@@ -57,6 +51,13 @@
           <el-tag v-bind="getPayMethodTagAttrs(row.payMethod)" size="small">
             {{ payMethodMap[row.payMethod]?.name || row.payMethod }}
           </el-tag>
+        </template>
+        <template #configName="{ row }">
+          <RecordPreviewTooltip :title="row.configName" :rows="buildPaymentPreviewRows(row)">
+            <template #reference>
+              <span class="config-name" tabindex="0" :aria-label="`预览 ${row.configName}`">{{ row.configName }}</span>
+            </template>
+          </RecordPreviewTooltip>
         </template>
         <template #configValue="{ row }">
           <div class="value-cell">
@@ -159,6 +160,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, View, Hide, Lock, Shop, Setting, CircleCheck, CircleClose,
 } from '@element-plus/icons-vue'
+import { buildPaymentPreviewRows } from '~/utils/preview-utils'
 import {
   usePaymentData, payMethodOptions, payMethodMap, providerOptions,
   isSensitiveField,
@@ -230,7 +232,7 @@ const configColumns = computed(() => [
   { prop: 'storeName', label: '门店', width: 120, filters: storeNameFilters.value, filterMethod: filterByProp('storeName') },
   { prop: 'payMethod', label: '支付方式', width: 100, align: 'center' as const, slot: 'payMethod', filters: payMethodFilters.value, filterMethod: filterByProp('payMethod') },
   { prop: 'provider', label: '服务商', width: 120, filters: providerFilters.value, filterMethod: filterByProp('provider') },
-  { prop: 'configName', label: '配置项', width: 140, filters: configNameFilters.value, filterMethod: filterByProp('configName') },
+  { prop: 'configName', label: '配置项', width: 140, slot: 'configName', filters: configNameFilters.value, filterMethod: filterByProp('configName') },
   { prop: 'configValue', label: '配置值', minWidth: 220, slot: 'configValue' },
   { prop: 'isSensitive', label: '类型', width: 80, align: 'center' as const, slot: 'isSensitive', filters: isSensitiveFilters, filterMethod: filterByProp('isSensitive') },
   { prop: 'status', label: '状态', width: 80, align: 'center' as const, slot: 'status', filters: statusFilters, filterMethod: filterByProp('status') },
@@ -260,6 +262,8 @@ function toggleReveal(id: number) {
   }
   revealedIds.value = new Set(revealedIds.value)
 }
+
+
 
 function maskValue(value: string): string {
   if (value.length <= 8) return '••••••••'

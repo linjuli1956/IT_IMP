@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="费用分摊方案管理">
+    <PageHeader
+      title="费用分摊方案管理"
+      subtitle="通用费用分摊规则引擎"
+      :description="`方案独立于运营商和门店，支持四种分摊方式（固定金额、比例、按数量、手动输入）。生成计提表时选择「按费用分摊方案」模式即可使用。运营商为空表示通用方案。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -9,43 +13,45 @@
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>费用分摊方案 — 通用费用分摊规则引擎</template>
-      <div class="usage-tips">
-        <p>• 方案独立于运营商和门店，支持跨门店、按费用类型分行展示的分摊方式</p>
-        <p>• 四种分摊方式：固定金额、比例、按数量、手动输入</p>
-        <p>• 生成计提表时选择"按费用分摊方案"模式即可使用</p>
-        <p>• 运营商为空表示通用方案，所有运营商均可使用</p>
-      </div>
-    </el-alert>
-
-    <CrudTable
-      :columns="columns"
-      :data="schemeList"
-      :loading="loading"
-      :show-selection="false"
-      @delete="handleDelete"
-    >
-      <template #carrier="{ row }">
-        <el-tag v-if="row.carrier" size="small" :type="carrierTagType(row.carrier)">{{ row.carrier }}</el-tag>
-        <el-tag v-else size="small" type="info">通用</el-tag>
-      </template>
-      <template #itemCount="{ row }">
-        {{ row.items?.length || 0 }} 个费用项
-      </template>
-      <template #status="{ row }">
-        <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
-          {{ row.status === 1 ? '启用' : '禁用' }}
-        </el-tag>
-      </template>
-      <template #actions="{ row }">
-        <el-button size="small" link type="primary" @click="handleEdit(row)">编辑</el-button>
-        <el-button size="small" link type="info" @click="handleView(row)">查看</el-button>
-        <el-button size="small" link type="warning" @click="handleToggleStatus(row)">
-          {{ row.status === 1 ? '禁用' : '启用' }}
-        </el-button>
-      </template>
-    </CrudTable>
+    <div class="card">
+      <CrudTable
+        v-if="schemeList.length > 0 || loading"
+        :columns="columns"
+        :data="schemeList"
+        :loading="loading"
+        :show-selection="false"
+        :action-width="140"
+        @delete="handleDelete"
+      >
+        <template #carrier="{ row }">
+          <el-tag v-if="row.carrier" size="small" :type="carrierTagType(row.carrier)">{{ row.carrier }}</el-tag>
+          <el-tag v-else size="small" type="info">通用</el-tag>
+        </template>
+        <template #itemCount="{ row }">
+          {{ row.items?.length || 0 }} 个费用项
+        </template>
+        <template #status="{ row }">
+          <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+            {{ row.status === 1 ? '启用' : '禁用' }}
+          </el-tag>
+        </template>
+        <template #actions="{ row }">
+          <el-button size="small" @click="handleEdit(row as FeeAllocationScheme)">编辑</el-button>
+          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
+            <el-button size="small" text>
+              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="view">查看</el-dropdown-item>
+                <el-dropdown-item command="toggle">{{ row.status === 1 ? '禁用' : '启用' }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
+      </CrudTable>
+      <EmptyState v-else description="暂无费用分摊方案" />
+    </div>
 
     <!-- 方案编辑弹窗 -->
     <el-dialog
@@ -98,7 +104,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, ArrowDown } from '@element-plus/icons-vue'
 import type { FeeItem, FeeAllocationScheme } from '~/types/fee-scheme'
 
 const carrierOptions = [
@@ -237,18 +243,15 @@ async function handleToggleStatus(row: FeeAllocationScheme) {
     ElMessage.success(newStatus === 1 ? '已启用' : '已禁用')
   }
 }
+
+// —— 操作下拉菜单 ——
+function handleActionCommand(command: string, row: any) {
+  if (command === 'view') handleView(row as FeeAllocationScheme)
+  else if (command === 'toggle') handleToggleStatus(row as FeeAllocationScheme)
+}
 </script>
 
 <style scoped>
-.usage-alert {
-  margin-bottom: var(--spacing-card);
-}
-
-.usage-tips p {
-  margin: 4px 0;
-  line-height: 1.6;
-}
-
 .var-hint {
   font-size: var(--font-size-mini);
   color: var(--text-secondary);

@@ -2,7 +2,7 @@
 
 一个可自托管的综合管理平台。项目维护一套 `web/` 业务源码，并提供 Windows EXE 与 Docker Compose 两种部署方式。
 
-当前发布日期版本：`20260805`。
+当前发布日期版本：`20260810`。
 
 ## Docker Compose（推荐）
 
@@ -24,7 +24,9 @@ docker compose up -d
 
 ## Windows EXE
 
-桌面配置工具用于配置数据库、初始化空数据库、创建首个管理员和启动本地 Web 服务。发布时必须将 `platform-config.exe`、`bun/` 和 `web/` 作为完整目录一起复制。
+桌面配置工具用于配置数据库、初始化空数据库、创建首个管理员和启动本地 Web 服务。
+
+> ⚠️ **必须整目录运行**：`platform-config.exe` 运行时依赖同目录的 `bun\bun.exe` 与 `web\` 目录（用于执行 Prisma 迁移和启动 Web 服务）。请勿单独复制 exe 文件，否则会提示“未找到 Bun 运行时”。请使用下方发布脚本生成的完整发布包。
 
 构建发布包：
 
@@ -32,7 +34,9 @@ docker compose up -d
 .\desktop\build-release.ps1
 ```
 
-发布包位于 `desktop/build/release/IT_IMP-20260805/`，配置工具默认显示“综合管理平台-配置工具 20260805”。
+发布包位于 `desktop/build/release/IT_IMP-20260810/`，配置工具默认显示“综合管理平台-配置工具 20260810”。
+
+> 发布脚本会自动寻找本机 Bun（`BUN_EXE` 环境变量 → `~/.bun/bin/bun.exe` → PATH）并复制进发布包的 `bun/` 目录；若本机未安装 Bun，请先安装：`powershell -c "irm bun.sh/install.ps1 | iex"`。
 
 ## 项目结构
 

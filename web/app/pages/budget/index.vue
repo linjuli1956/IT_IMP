@@ -1,47 +1,39 @@
 <template>
   <div class="page-container">
-    <PageHeader title="预算管理">
+    <PageHeader
+      title="预算管理"
+      subtitle="门店预算矩阵与执行对比"
+      description="汇总视图：门店×月份预算矩阵，按费用范围逐月计算，每店独立行底色，≥2000元标红，按季度分隔。鼠标悬停查看费用构成，支持导出Excel（汇总+明细2个Sheet）。明细视图：按门店分组展开，查看运营商×费用类型的月费/年费/费用范围/缴费方式。执行对比：预算vs实际支出，进度条超100%标红。支持生成下个财年、新增/复制明细。"
+    >
       <template #actions>
         <el-button plain @click="handleDownloadTemplate">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
-        <el-button type="primary" plain @click="openImportDialog">
+        <el-button v-if="canEdit" type="primary" plain @click="openImportDialog">
           <el-icon><Upload /></el-icon>
           导入数据
         </el-button>
-        <el-button type="primary" @click="handleAddDetail">
+        <el-button v-if="canEdit" type="primary" @click="handleAddDetail">
           <el-icon><Plus /></el-icon>
           新增明细
         </el-button>
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 汇总视图：门店×月份预算矩阵，按费用范围逐月计算（某月只累算该月生效的费用项），每店独立行底色，≥2000元标红，按季度分隔</p>
-        <p>2. 鼠标悬停任意月份金额可查看该月费用构成明细；点击"导出Excel"可导出汇总矩阵+明细清单（2个Sheet）</p>
-        <p>3. 点击"生成下个财年"可克隆当前财年全部明细到下一年，之后逐条修改差异部分</p>
-        <p>4. 明细视图：按门店分组展开，查看运营商×费用类型的月费/年费/费用范围/缴费方式，可切换财年</p>
-        <p>5. 执行对比：预算vs实际支出，进度条超100%标红，显示超支预警项数</p>
-        <p>6. 点击"新增明细"可添加预算明细项；点击"复制"可基于已有明细快速创建新项</p>
-      </div>
-    </el-alert>
-
-    <!-- 概览卡片 -->
+    <!-- 概览卡片（label 带财年标识，切换财年一目了然） -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
-        <StatCard :icon="Wallet" :color="budgetVars.budgetColor" :bg="budgetVars.budgetBg" :value="'¥ ' + totalAnnualBudget.toLocaleString()" label="年度预算总额" />
+        <StatCard :icon="Wallet" :color="budgetVars.budgetColor" :bg="budgetVars.budgetBg" :value="'¥ ' + totalAnnualBudget.toLocaleString()" :label="selectedFiscalYear + '财年预算总额'" />
       </el-col>
       <el-col :span="6">
-        <StatCard :icon="Money" :color="budgetVars.monthlyColor" :bg="budgetVars.monthlyBg" :value="'¥ ' + totalMonthlyBudget.toLocaleString()" label="月度预算合计" />
+        <StatCard :icon="Money" :color="budgetVars.monthlyColor" :bg="budgetVars.monthlyBg" :value="'¥ ' + totalMonthlyBudget.toLocaleString()" :label="selectedFiscalYear + '财年月度预算'" />
       </el-col>
       <el-col :span="6">
-        <StatCard :icon="DataLine" :color="budgetVars.storeColor" :bg="budgetVars.storeBg" :value="detailStores.length + ' 个'" label="预算门店数" />
+        <StatCard :icon="DataLine" :color="budgetVars.storeColor" :bg="budgetVars.storeBg" :value="detailStores.length + ' 个'" :label="selectedFiscalYear + '财年门店数'" />
       </el-col>
       <el-col :span="6">
-        <StatCard :icon="WarningFilled" :color="budgetVars.warnColor" :bg="budgetVars.warnBg" :value="overBudgetCount + ' 项'" label="超支预警" />
+        <StatCard :icon="WarningFilled" :color="budgetVars.warnColor" :bg="budgetVars.warnBg" :value="overBudgetCount + ' 项'" :label="selectedFiscalYear + '财年超支预警'" />
       </el-col>
     </el-row>
 
@@ -53,15 +45,19 @@
             <el-select v-model="selectedFiscalYear" style="width: 120px">
               <el-option v-for="y in fiscalYears" :key="y" :label="y + '财年'" :value="y" />
             </el-select>
-            <el-button type="warning" plain @click="handleGenerateNextYear">
+            <el-button v-if="canEdit" type="warning" plain @click="handleGenerateNextYear">
               <el-icon><CopyDocument /></el-icon>
               生成下个财年
+            </el-button>
+            <el-button v-if="canEdit" type="danger" plain @click="handleDeleteFiscalYear">
+              <el-icon><Delete /></el-icon>
+              删除财年
             </el-button>
             <el-button type="success" plain @click="handleExportExcel" :loading="exporting">
               <el-icon><Download /></el-icon>
               导出Excel
             </el-button>
-            <span class="tab-hint">{{ selectedFiscalYear }}财年 = {{ selectedFiscalYear }}年4月 ~ {{ selectedFiscalYear + 1 }}年3月，按费用范围逐月计算</span>
+            <span class="tab-hint">{{ fiscalYearRangeText }}</span>
           </div>
           <el-table :data="matrixData" border show-summary :summary-method="getSummary" :cell-class-name="getQuarterCellClass" :header-cell-class-name="getQuarterHeaderClass" :row-class-name="getMatrixRowClass" class="matrix-table">
             <el-table-column prop="storeName" label="门店" fixed width="180" header-align="center">
@@ -330,6 +326,23 @@
         @files-change="handleImportFilesChange"
       />
 
+      <el-form label-width="110px" class="import-form">
+        <el-form-item label="默认费用范围">
+          <div class="import-range-field">
+            <el-date-picker
+              v-model="importDefaultFeeRange"
+              type="monthrange"
+              value-format="YYYY-MM"
+              start-placeholder="开始月份"
+              end-placeholder="结束月份"
+              clearable
+              style="width: 320px"
+            />
+            <div class="form-tip">选填：模板中“费用范围”留空的行导入时自动填为该范围；模板已填写具体范围的以模板为准。</div>
+          </div>
+        </el-form-item>
+      </el-form>
+
       <el-alert v-if="importResult" :type="importResult.type" :closable="false" show-icon class="import-result">
         <template #title>{{ importResult.title }}</template>
         <div v-if="importResult.errors && importResult.errors.length > 0" class="import-errors">
@@ -350,36 +363,59 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Wallet, Money, DataLine, WarningFilled, CopyDocument, Download, Upload } from '@element-plus/icons-vue'
+import { Plus, Wallet, Money, DataLine, WarningFilled, CopyDocument, Download, Upload, Delete } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
 import DragUpload from '~/components/invoice/DragUpload.vue'
 import {
   useBudgetData, budgetCarriers, budgetFeeTypes,
-  getFiscalYearMonths, getMonthLabel, formatFeeRange,
   type BudgetDetail, type BudgetExecution, type BudgetImportErrorItem,
 } from '~/composables/useBudgetData'
+import { getFiscalYearMonths, getMonthLabel, formatFeeRange } from '~/utils/fiscal'
 import { getApiErrorMessage } from '~/composables/useApi'
 import { useStoreData } from '~/composables/useStoreData'
+import { useSettingsData } from '~/composables/useSettingsData'
 
 const {
   budgetDetails, budgetExecutions, loading, fiscalYears,
   fetchDetails, fetchExecutions,
   getDetailStores, getSummaryMatrix, getMonthBreakdown, generateNextFiscalYear,
-  addDetail, updateDetail, deleteDetail, downloadBudgetTemplate, importBudget,
+  addDetail, updateDetail, deleteDetail, deleteFiscalYear, downloadBudgetTemplate, importBudget,
 } = useBudgetData()
 const { storeOptions } = useStoreData()
+const { fiscalYearStartMonth } = useSettingsData()
 
 // 页面加载时获取预算明细和执行对比数据
 onMounted(async () => {
+  // 操作按钮（导入/新增/生成/删除）仅管理员与操作员可见，查看者只读
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch {
+      canEdit.value = false
+    }
+  }
   await fetchDetails()
   await fetchExecutions()
 })
 
 const activeTab = ref('summary')
 const selectedFiscalYear = ref(2026)
+/** 是否有编辑权限（管理员/操作员），查看者只读 */
+const canEdit = ref(false)
 
-// 当前财年的月份列表
-const currentMonths = computed(() => getFiscalYearMonths(selectedFiscalYear.value))
+// 当前财年的月份列表（按系统设置的财年起始月生成）
+const currentMonths = computed(() => getFiscalYearMonths(selectedFiscalYear.value, fiscalYearStartMonth.value))
+
+// 财年范围提示文案（如 "2026财年 = 2026年4月 ~ 2027年3月"）
+const fiscalYearRangeText = computed(() => {
+  const y = selectedFiscalYear.value
+  const m = fiscalYearStartMonth.value
+  const endMonth = m === 1 ? 12 : m - 1
+  const endYear = m === 1 ? y : y + 1
+  return `${y}财年 = ${y}年${m}月 ~ ${endYear}年${endMonth}月，按费用范围逐月计算`
+})
 // 当前财年的汇总矩阵
 const summaryData = computed(() => getSummaryMatrix(selectedFiscalYear.value))
 // 当前财年的门店列表
@@ -419,19 +455,22 @@ function getSummary({ columns, data }: { columns: any[]; data: any[] }) {
   return means
 }
 
-// 季度分隔线
-const quarterStartMonths = [4, 7, 10, 1]
+// 季度分隔线（按系统设置的财年起始月动态计算：起始月、+3、+6、+9，跨年按 12 取模）
+const quarterStartMonths = computed(() => {
+  const m = fiscalYearStartMonth.value
+  return [m, (m + 3 - 1) % 12 + 1, (m + 6 - 1) % 12 + 1, (m + 9 - 1) % 12 + 1]
+})
 function getQuarterCellClass({ column }: { column: any }) {
   const month = column.property
   if (!month || month === 'storeName' || month === 'subtotal') return ''
   const monthNum = parseInt(month.split('-')[1])
-  return quarterStartMonths.includes(monthNum) ? 'quarter-start' : ''
+  return quarterStartMonths.value.includes(monthNum) ? 'quarter-start' : ''
 }
 function getQuarterHeaderClass({ column }: { column: any }) {
   const month = column.property
   if (!month || month === 'storeName' || month === 'subtotal') return ''
   const monthNum = parseInt(month.split('-')[1])
-  return quarterStartMonths.includes(monthNum) ? 'quarter-start' : ''
+  return quarterStartMonths.value.includes(monthNum) ? 'quarter-start' : ''
 }
 
 // 门店行底色（每店一色，参照支付管理服务商底色模式）
@@ -470,6 +509,34 @@ function handleGenerateNextYear() {
       ElMessage.warning(`${nextYear} 财年已存在数据，无法重复生成`)
     }
   }).catch(() => {})
+}
+
+// 删除整个财年（危险操作，需输入财年数字确认）
+async function handleDeleteFiscalYear() {
+  const year = selectedFiscalYear.value
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `将删除 ${year} 财年的全部预算明细与执行对比数据（共涉及 budget_details / budget_executions），此操作不可恢复。\n请输入财年数字「${year}」以确认：`,
+      '删除财年',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除（不可逆）',
+        cancelButtonText: '取消',
+        inputPlaceholder: `请输入 ${year}`,
+        inputValidator: (val) => String(val).trim() === String(year) || '输入的财年不匹配，请重新输入',
+      },
+    )
+    if (String(value).trim() !== String(year)) return
+    const { detailCount, executionCount } = await deleteFiscalYear(year)
+    ElMessage.success(`已删除 ${year} 财年：明细 ${detailCount} 条、执行对比 ${executionCount} 条`)
+    // 自动切换到剩余财年（取最大），避免停留在已删除财年显示空数据
+    const remaining = fiscalYears.value.filter(y => y !== year)
+    if (remaining.length > 0) {
+      selectedFiscalYear.value = Math.max(...remaining)
+    }
+  } catch {
+    // 取消或校验失败
+  }
 }
 
 // === Tab 2: 明细视图 ===
@@ -567,6 +634,7 @@ function handleDeleteDetail(row: BudgetDetail) {
 const importDialogVisible = ref(false)
 const importing = ref(false)
 const importFile = ref<File | null>(null)
+const importDefaultFeeRange = ref<string[] | null>(null)
 const importUploadRef = ref()
 const importResult = ref<{
   type: 'success' | 'error'
@@ -578,12 +646,14 @@ function openImportDialog() {
   importDialogVisible.value = true
   importResult.value = null
   importFile.value = null
+  importDefaultFeeRange.value = null
 }
 
 function closeImportDialog() {
   importDialogVisible.value = false
   importResult.value = null
   importFile.value = null
+  importDefaultFeeRange.value = null
   importUploadRef.value?.clear()
 }
 
@@ -607,7 +677,10 @@ async function handleImportConfirm() {
   importing.value = true
   importResult.value = null
   try {
-    const { count, skipped } = await importBudget(importFile.value)
+    const defaultFeeRange = importDefaultFeeRange.value
+      ? importDefaultFeeRange.value.join('~')
+      : ''
+    const { count, skipped } = await importBudget(importFile.value, defaultFeeRange)
     importResult.value = {
       type: 'success',
       title: skipped > 0 ? `导入成功 ${count} 条，跳过重复 ${skipped} 条` : `导入成功 ${count} 条`,
@@ -887,6 +960,9 @@ async function handleExportExcel() {
 /* 预算 Excel 导入弹窗 */
 .import-alert { margin-bottom: var(--spacing-card); }
 .import-tips { font-size: var(--font-size-mini); line-height: 1.8; }
+.import-form { margin-top: var(--spacing-card); }
+.import-range-field { display: flex; flex-direction: column; gap: 6px; }
+.form-tip { font-size: var(--font-size-mini); color: var(--text-secondary); }
 .import-result { margin-top: var(--spacing-card); }
 .import-errors { margin-top: var(--spacing-sm); }
 </style>

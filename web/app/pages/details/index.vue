@@ -1,17 +1,6 @@
 <template>
   <div class="page-container">
-    <PageHeader title="明细表管理" />
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 目前仅电信有明细表（XLS格式），移动/联通/广电直接用发票金额生成计提表</p>
-        <p>2. 明细表为多 sheet 结构，不同门店在不同 sheet 中，上传后自动解析</p>
-        <p>3. 明细表绑定运营商+费用月，一张明细表可服务于同运营商同月的多个批次</p>
-        <p>4. 生成计提表时，系统按"运营商+费用月"自动匹配对应明细表</p>
-        <p>5. 列格式：业务号码 | 月基本费 | 语音通信费 | 短信彩信费 | 综合信息服务费 | 优惠费用 | 应收合计</p>
-      </div>
-    </el-alert>
+    <PageHeader title="明细表管理" subtitle="电信号码费用明细" description="目前仅电信有明细表（XLS格式），多 sheet 结构按门店分 sheet；明细表绑定运营商+费用月，生成计提表时按运营商+费用月自动匹配" />
 
     <!-- 上传区 -->
     <div class="card upload-card">
@@ -80,6 +69,7 @@
 
     <!-- 明细表表格 -->
     <div class="card">
+      <template v-if="loading || filteredDetails.length > 0">
       <!-- 批量操作栏 -->
       <div v-if="selectedDetails.length > 0" class="batch-bar">
         <span class="batch-info">已选 {{ selectedDetails.length }} 项</span>
@@ -119,10 +109,12 @@
           </template>
         </el-table-column>
       </el-table>
+      </template>
 
-      <div v-if="filteredDetails.length === 0" class="empty-tip">
-        <el-empty description="暂无明细表数据" />
-      </div>
+      <EmptyState
+        v-else
+        description="暂无明细表数据"
+      />
     </div>
 
   </div>
@@ -341,7 +333,4 @@ async function doUpload() {
   margin-right: auto;
 }
 
-.empty-tip {
-  padding: 40px 0;
-}
 </style>

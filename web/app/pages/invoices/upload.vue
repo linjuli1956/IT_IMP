@@ -1,21 +1,14 @@
 <template>
   <div class="page-container">
-    <PageHeader title="上传发票">
+    <PageHeader
+      title="上传发票"
+      subtitle="发票上传与OCR识别"
+      description="按步骤操作：填写信息 → 上传并OCR识别 → 确认发票信息 → 完成。支持PDF/ZIP格式拖拽上传，ZIP自动解压为多张PDF并逐个OCR。OCR自动提取发票号码、日期、销售方、金额，可手动修正。OCR失败的发票可在确认表格中手动录入。"
+    >
       <template #actions>
         <el-button @click="navigateTo('/invoices/batches')">返回批次列表</el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 按步骤操作：填写信息 → 上传并OCR识别 → 确认发票信息 → 完成</p>
-        <p>2. 支持PDF/ZIP格式拖拽上传，ZIP自动解压为多张PDF并逐个OCR</p>
-        <p>3. OCR自动提取发票号码、日期、销售方、金额，可手动修正</p>
-        <p>4. OCR失败的发票字段为空，可在确认表格中手动录入</p>
-        <p>5. 确认后发票状态变为已确认，可在批次列表中查看</p>
-      </div>
-    </el-alert>
 
     <div class="upload-page">
       <!-- 步骤指引 -->

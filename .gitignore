@@ -16,6 +16,7 @@ dist/
 desktop/build/bin/
 desktop/build/windows/
 desktop/build/bin/config.json
+desktop/build/release/
 *.exe
 
 # ---- 运行时数据（部署时生成）----
@@ -102,5 +103,7 @@ desktop/build/bin/bun/
 # ---- Docker 运行时数据与环境文件 ----
 deploy/docker/data/
 
-# ---- Qoder 缓存 ----
+# ---- AI 工具缓存 ----
 .qoder/
+.codex/
+.reasonix/

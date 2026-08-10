@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <PageHeader :title="`批次详情 ${formatBatchNo(batch)}`">
+    <PageHeader :title="`批次详情 ${formatBatchNo(batch)}`" subtitle="批次发票与报销说明">
       <template #actions>
         <el-button @click="navigateTo('/invoices/batches')">返回批次列表</el-button>
         <el-button
@@ -95,14 +95,12 @@
 
     <!-- 加载中 -->
     <div v-if="loading && !batch" class="card not-found-card">
-      <el-empty description="加载中..." />
+      <EmptyState description="加载中..." />
     </div>
 
     <!-- 批次不存在 -->
     <div v-else-if="!batch" class="card not-found-card">
-      <el-empty description="批次不存在或已被删除">
-        <el-button type="primary" @click="navigateTo('/invoices/batches')">返回批次列表</el-button>
-      </el-empty>
+      <EmptyState description="批次不存在或已被删除" action-text="返回批次列表" @action="navigateTo('/invoices/batches')" />
     </div>
   </div>
 </template>

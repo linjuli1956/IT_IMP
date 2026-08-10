@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="发票列表">
+    <PageHeader
+      title="发票列表"
+      subtitle="发票查看、打印与管理"
+      description="查看所有已上传的发票，支持按运营商、费用月、门店、关键词筛选。门店列用标签展示，一张发票可关联多个部门。操作列支持：查看预览、下载原文件、打印（A5尺寸，2张/张A4）、删除。"
+    >
       <template #actions>
         <el-button type="primary" :disabled="selectedInvoices.length === 0" @click="handleBatchPrint">
           <el-icon><Printer /></el-icon>
@@ -8,16 +12,6 @@
         </el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 查看所有已上传的发票，支持按运营商、费用月、门店、关键词筛选</p>
-        <p>2. 门店列用标签展示，一张发票可关联多个部门（多标签显示）</p>
-        <p>3. 操作列支持：查看预览、下载原文件、打印（A5尺寸，2张/张A4）、删除</p>
-        <p>4. 打印流程：点击"打印" → 预览 → 确认打印 → 自动弹打印对话框（A5排版已设好）→ 裁剪</p>
-      </div>
-    </el-alert>
 
     <!-- 筛选区 -->
     <div class="card filter-card">
@@ -61,6 +55,7 @@
 
     <!-- 发票表格 -->
     <div class="card">
+      <template v-if="loading || filteredInvoices.length > 0">
       <!-- 批量操作栏 -->
       <div v-if="selectedInvoices.length > 0" class="batch-bar">
         <span class="batch-info">已选 {{ selectedInvoices.length }} 项</span>
@@ -113,10 +108,9 @@
           </template>
         </el-table-column>
       </el-table>
+      </template>
 
-      <div v-if="filteredInvoices.length === 0" class="empty-tip">
-        <el-empty description="暂无发票数据" />
-      </div>
+      <EmptyState v-else description="暂无发票数据" />
     </div>
 
     <!-- 打印预览弹窗 -->
@@ -451,9 +445,5 @@ async function handleDelete(row: any) {
 .print-tips-content p {
   margin: 4px 0;
   line-height: 1.6;
-}
-
-.empty-tip {
-  padding: 40px 0;
 }
 </style>

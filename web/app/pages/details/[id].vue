@@ -1,20 +1,10 @@
 <template>
   <div class="page-container" v-loading="loading">
-    <PageHeader :title="detail ? `${detail.carrier} ${detail.feeMonth} 明细表` : '明细表详情'">
+    <PageHeader :title="detail ? `${detail.carrier} ${detail.feeMonth} 明细表` : '明细表详情'" subtitle="电信号码费用明细" description="按 sheet 分 tab 展示门店号码费用明细，号码行取应收合计，非号码行用倒推计算，门店名自动匹配系统门店列表">
       <template #actions>
         <el-button @click="navigateTo('/details')">返回列表</el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 明细表按 sheet 分 tab 展示，每个 sheet 对应一个门店的号码费用明细</p>
-        <p>2. 列说明：业务号码 | 月基本费 | 语音通信费 | 短信彩信费 | 综合信息服务费 | 优惠费用 | 应收合计</p>
-        <p>3. 生成计提表时，号码行直接取"应收合计"，非号码行用倒推计算（发票总额 - 号码行之和）</p>
-        <p>4. 门店名自动匹配系统门店列表，未匹配的需手动关联</p>
-      </div>
-    </el-alert>
 
     <template v-if="detail">
       <!-- 明细表信息 -->
@@ -104,9 +94,7 @@
     </template>
 
     <div v-else class="card empty-tip">
-      <el-empty description="明细表不存在或已删除">
-        <el-button @click="navigateTo('/details')">返回列表</el-button>
-      </el-empty>
+      <EmptyState description="明细表不存在或已删除" action-text="返回列表" @action="navigateTo('/details')" />
     </div>
   </div>
 </template>

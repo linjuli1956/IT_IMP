@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -176,15 +177,29 @@ func (a *App) getDecryptedPassword() (string, error) {
 	return decryptPassword(a.config.Database.EncryptedPassword)
 }
 
+// buildDatabaseURLFromParts 使用 net/url 标准编码构造 DATABASE_URL。
+// 用户名/密码/库名均按 RFC 3986 编码，密码含 @ : # / % ? & + 空格 中文 均安全；
+// 与 Docker entrypoint 的 URL 构造语义一致。
+func buildDatabaseURLFromParts(username, password, host string, port int, dbname string) string {
+	u := url.URL{
+		Scheme: "mysql",
+		User:   url.UserPassword(username, password),
+		Host:   fmt.Sprintf("%s:%d", host, port),
+		Path:   "/" + dbname,
+	}
+	return u.String()
+}
+
 // buildDatabaseURL 构造 DATABASE_URL 环境变量（含密码，仅内部使用）
 func (a *App) buildDatabaseURL() (string, error) {
 	password, err := a.getDecryptedPassword()
 	if err != nil {
 		return "", fmt.Errorf("密码解密失败: %w", err)
 	}
-	return fmt.Sprintf("mysql://%s:%s@%s:%d/%s",
+	return buildDatabaseURLFromParts(
 		a.config.Database.Username, password,
-		a.config.Database.Host, a.config.Database.Port, a.config.Database.DBName), nil
+		a.config.Database.Host, a.config.Database.Port, a.config.Database.DBName,
+	), nil
 }
 
 // findWebDir 查找 Web 服务目录
@@ -230,6 +245,16 @@ func (a *App) findBunExe() string {
 	}
 
 	return ""
+}
+
+// bunNotFoundMessage 生成 Bun 运行时缺失时的详细提示（列出已查找路径与解决指引）
+func bunNotFoundMessage() string {
+	exePath, _ := os.Executable()
+	exeDir := filepath.Dir(exePath)
+	return fmt.Sprintf(
+		"未找到 Bun 运行时。\n已查找:\n  1. 随包目录: %s\n  2. PATH 环境变量\n\n请从完整发布包运行（发布包需包含 bun\\bun.exe 与 web\\ 目录），或安装 Bun 后重试:\n  https://bun.sh/docs/installation",
+		filepath.Join(exeDir, "bun", "bun.exe"),
+	)
 }
 
 // validateDatabaseName 校验数据库名只包含字母、数字和下划线
@@ -433,7 +458,7 @@ func (a *App) InitDatabase(initialAdminUsername, initialAdminPassword string) st
 	// 检查 Bun 运行时
 	bunExe := a.findBunExe()
 	if bunExe == "" {
-		return "错误: 未找到 Bun 运行时，请确保发布包包含 bun/bun.exe"
+		return bunNotFoundMessage()
 	}
 
 	runtime.EventsEmit(a.ctx, "log", fmt.Sprintf("[%s] 开始初始化数据库 %s@%s:%d/%s\n",
@@ -514,7 +539,7 @@ func (a *App) UpgradeDatabase() string {
 	// 检查 Bun 运行时
 	bunExe := a.findBunExe()
 	if bunExe == "" {
-		return "错误: 未找到 Bun 运行时，请确保发布包包含 bun/bun.exe"
+		return bunNotFoundMessage()
 	}
 
 	runtime.EventsEmit(a.ctx, "log", fmt.Sprintf("[%s] 开始升级数据库...\n", timestamp()))
@@ -598,7 +623,7 @@ func (a *App) ResetAdminPassword(username, password string) string {
 func (a *App) runPrismaCommand(webDir string, args []string) (string, error) {
 	bunExe := a.findBunExe()
 	if bunExe == "" {
-		return "", fmt.Errorf("未找到 Bun 运行时，请确保发布包包含 bun/bun.exe")
+		return "", fmt.Errorf("%s", bunNotFoundMessage())
 	}
 
 	dbURL, err := a.buildDatabaseURL()
@@ -633,7 +658,7 @@ func (a *App) runPrismaCommand(webDir string, args []string) (string, error) {
 func (a *App) runBootstrapAdmin(webDir, username, password string, reset bool) (string, error) {
 	bunExe := a.findBunExe()
 	if bunExe == "" {
-		return "", fmt.Errorf("未找到 Bun 运行时，请确保发布包包含 bun/bun.exe")
+		return "", fmt.Errorf("%s", bunNotFoundMessage())
 	}
 
 	dbURL, err := a.buildDatabaseURL()
@@ -724,7 +749,7 @@ func (a *App) StartService() string {
 	// 查找 Bun 运行时
 	bunExe := a.findBunExe()
 	if bunExe == "" {
-		return "错误: 未找到 Bun 运行时，请确保发布包包含 bun/bun.exe"
+		return bunNotFoundMessage()
 	}
 	bunDir := filepath.Dir(bunExe)
 
@@ -740,15 +765,23 @@ func (a *App) StartService() string {
 		return "未找到Web服务入口，请先构建Nuxt应用（.output/server/index.mjs 不存在）"
 	}
 
+	// 启动前执行数据库迁移（仅 migrate deploy，不执行 reset/drop/seed）；
+	// 迁移失败则禁止启动服务，避免在未迁移的库上运行导致数据不一致。
+	migrateOutput, migrateErr := a.runPrismaCommand(nodeDir, []string{"migrate", "deploy"})
+	if migrateErr != nil {
+		return fmt.Sprintf("数据库迁移失败，未启动服务:\n%s%s", migrateOutput, migrateErr.Error())
+	}
+
 	cmd := exec.Command(bunExe, serverEntry)
 	cmd.Dir = nodeDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 隐藏 CMD 黑框
 
 	// 环境变量传递数据库配置（Prisma 7 需要 DATABASE_URL + 单独参数）
-	password, _ := a.getDecryptedPassword()
-	dbURL := fmt.Sprintf("mysql://%s:%s@%s:%d/%s",
-		a.config.Database.Username, password,
-		a.config.Database.Host, a.config.Database.Port, a.config.Database.DBName)
+	dbURL, err := a.buildDatabaseURL()
+	if err != nil {
+		return "启动失败: 构造数据库连接串失败: " + err.Error()
+	}
+	password, _ := a.getDecryptedPassword() // 仅用于 DATABASE_PASSWORD 单独参数，不参与 URL 拼接
 	cmd.Env = commandEnv(bunDir, map[string]string{
 		"NUXT_PUBLIC_APP_NAME": a.config.AppName,
 		"PORT":                 fmt.Sprintf("%d", a.config.WebPort),

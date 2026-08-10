@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="小程序管理">
+    <PageHeader
+      title="小程序管理"
+      subtitle="小程序与邮箱凭据管理"
+      :description="`管理各小程序的名称、绑定邮箱及密码。敏感信息默认脱敏显示。支持按名称/邮箱搜索。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -8,15 +12,6 @@
         </el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理各小程序的名称、绑定邮箱及邮箱密码</p>
-        <p>2. 敏感信息（邮箱密码）默认脱敏显示，点击眼睛图标可切换显示/隐藏</p>
-        <p>3. 支持按名称/邮箱搜索，状态列可筛选</p>
-      </div>
-    </el-alert>
 
     <!-- 概览卡片 -->
     <el-row :gutter="16" class="stat-row">
@@ -42,6 +37,7 @@
     <!-- 表格 -->
     <div class="card">
       <CrudTable
+        v-if="filteredMiniapps.length > 0 || loading"
         :columns="columns"
         :data="filteredMiniapps"
         :loading="loading"
@@ -53,6 +49,13 @@
         @batch-delete="handleBatchDelete"
         @batch-copy="handleBatchCopy"
       >
+        <template #name="{ row }">
+          <RecordPreviewTooltip :title="row.name" :rows="buildMiniappPreviewRows(row)">
+            <template #reference>
+              <span class="miniapp-name" tabindex="0" :aria-label="`预览 ${row.name}`">{{ row.name }}</span>
+            </template>
+          </RecordPreviewTooltip>
+        </template>
         <template #emailPassword="{ row }">
           <SensitiveValue :value="row.emailPassword" />
         </template>
@@ -60,6 +63,7 @@
           <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无小程序数据" />
     </div>
 
     <!-- 新增/编辑弹窗 -->
@@ -97,6 +101,7 @@ import { Plus, Cellphone, CircleCheck, CircleClose, PieChart } from '@element-pl
 import { useMiniappData, type MiniappItem } from '~/composables/useMiniappData'
 import { getApiErrorMessage } from '~/composables/useApi'
 
+import { buildMiniappPreviewRows } from '~/utils/preview-utils'
 const { miniappList, loading, miniappStatusOptions, fetchMiniapps, addMiniapp, updateMiniapp, deleteMiniapp } = useMiniappData()
 
 onMounted(() => {
@@ -130,7 +135,7 @@ const statusFilters = [
 ]
 
 const columns = computed(() => [
-  { prop: 'name', label: '小程序名称', minWidth: 200 },
+  { prop: 'name', label: '小程序名称', minWidth: 200, slot: 'name' },
   { prop: 'email', label: '绑定邮箱', minWidth: 220 },
   { prop: 'emailPassword', label: '邮箱密码', width: 200, slot: 'emailPassword' },
   { prop: 'status', label: '状态', width: 90, align: 'center' as const, slot: 'status', filters: statusFilters, filterMethod: (v: any, r: any) => r.status === v },
@@ -179,6 +184,8 @@ function handleAdd() {
   })
   dialogVisible.value = true
 }
+
+
 
 function handleEdit(row: any) {
   const m = row as MiniappItem

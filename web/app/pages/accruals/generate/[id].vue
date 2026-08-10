@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <PageHeader :title="`生成计提表 ${batch ? batchNo : ''}`">
+    <PageHeader :title="`生成计提表 ${batch ? batchNo : ''}`" subtitle="按明细表/发票/分摊方案生成">
       <template #actions>
         <el-button @click="navigateTo(`/invoices/batches/${batchId}`)">返回批次详情</el-button>
         <el-button type="primary" :disabled="!batch || generating" :loading="generating" @click="handleGenerate">
@@ -200,16 +200,14 @@
 
     <!-- 批次不存在 -->
     <div v-else class="card not-found-card">
-      <el-empty description="批次不存在或已被删除">
-        <el-button type="primary" @click="navigateTo('/invoices/batches')">返回批次列表</el-button>
-      </el-empty>
+      <EmptyState description="批次不存在或已被删除" action-text="返回批次列表" @action="navigateTo('/invoices/batches')" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { generateReimbursementText } from '~/composables/useAccrualData'
+import { generateReimbursementText } from '~/utils/reimbursement'
 
 const route = useRoute()
 const batchId = Number(route.params.id)

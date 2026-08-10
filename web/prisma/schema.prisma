@@ -91,6 +91,15 @@ model Store {
   /// 状态：1=启用，0=禁用
   status Int    @default(1)
 
+  /// 门店下的网络设备
+  networkDevices NetworkDevice[]
+  /// 门店下的固话
+  phones Phone[]
+  /// 门店下的电脑
+  computers Computer[]
+  /// 门店下的电子称
+  scales Scale[]
+
   @@index([status])
   @@index([sort])
   @@map("stores")
@@ -369,6 +378,8 @@ model BudgetDetail {
   /// 备注
   remark        String   @db.VarChar(1000) @default("")
 
+  /// 组合唯一：同一财年下 门店+运营商+费用类型 唯一（防止重复/并发导入）
+  @@unique([fiscalYear, storeName, carrier, feeType])
   @@index([fiscalYear])
   @@index([storeName])
   @@index([carrier])
@@ -437,7 +448,7 @@ model PaymentConfig {
 // 9. IT资产管理
 // ===========================================
 
-/// 服务器表 — 存储本地和云服务器配置信息
+/// 服务器表 — 存储本地和云服务器配置信息（支持物理机/虚拟机自关联）
 model Server {
   /// 服务器主键ID，自增
   id             Int      @id @default(autoincrement())
@@ -455,40 +466,77 @@ model Server {
   port           String   @db.VarChar(10) @default("22")
   /// CPU型号
   cpuModel       String   @db.VarChar(100) @default("")
-  /// CPU核数
+  /// CPU核数（字符串，兼容存量）
   cpuCores       String   @db.VarChar(20) @default("")
-  /// 内存大小
+  /// 内存大小（字符串，兼容存量）
   memorySize     String   @db.VarChar(20) @default("")
-  /// 系统盘大小
+  /// 系统盘大小（字符串，兼容存量）
   systemDiskSize String   @db.VarChar(20) @default("")
-  /// 数据盘大小
+  /// 数据盘大小（字符串，兼容存量）
   dataDiskSize   String   @db.VarChar(20) @default("")
   /// 磁盘类型：SSD / HDD / SSD+HDD
   diskType       String   @db.VarChar(20) @default("")
   /// 操作系统
   os             String   @db.VarChar(100) @default("")
-  /// 到期日期，格式 YYYY-MM-DD
-  expireDate     String   @db.VarChar(10) @default("")
+  /// 云服务器/租约到期日期（DATE）
+  expireDate     DateTime? @db.Date
   /// 用途说明
   purpose        String   @db.VarChar(1000) @default("")
   /// 服务器登录账号
   account        String   @db.VarChar(100) @default("")
-  /// 服务器登录密码（敏感，应用层加密）
+  /// 服务器登录密码（敏感，内网基础防护：列表/详情接口不返回）
   password       String   @db.VarChar(255) @default("")
   /// 数据库账号
   dbAccount      String   @db.VarChar(100) @default("")
-  /// 数据库密码（敏感）
+  /// 数据库密码（敏感，内网基础防护：列表/详情接口不返回）
   dbPassword     String   @db.VarChar(255) @default("")
   /// 数据库端口
   dbPort         String   @db.VarChar(10) @default("")
   /// 备注
   remark         String   @db.VarChar(1000) @default("")
-  /// 状态：正常 / 停用
+  /// 管理地址（PVE/ESXi/云控制台管理界面 URL；"前往管理"新窗口打开）
+  manageUrl      String?  @db.VarChar(500)
+  /// 状态：正常 / 停用 / 报废
   status         String   @db.VarChar(10) @default("正常")
+  /// 厂商（戴尔/惠普/浪潮/华为/联想等）
+  manufacturer   String?  @db.VarChar(50)
+  /// 服务器型号
+  model          String?  @db.VarChar(100)
+  /// 序列号（可空唯一）
+  serialNo       String?  @db.VarChar(100) @unique
+  /// RAID 类型：RAID0/1/5/10/无
+  raidType       String?  @db.VarChar(50)
+  /// 网卡信息（如 2×1G + 2×10G）
+  networkCards   String?  @db.VarChar(200)
+  /// 硬件保修到期日期（DATE）
+  warrantyEndDate DateTime? @db.Date
+  /// 是否虚拟机（true=虚拟机，false=物理机）
+  isVirtual      Boolean  @default(false)
+  /// 虚拟化平台：PVE / ESXi / 空
+  hypervisor     String?  @db.VarChar(20)
+  /// 宿主物理机ID（自关联，物理机为空；虚拟机必填）
+  hostServerId   Int?
+  /// 虚拟机分配CPU核数（非负）
+  cpuCoresAllocated Int?
+  /// 虚拟机分配内存（GB，非负）
+  memoryAllocatedGB Decimal? @db.Decimal(8, 2)
+  /// 虚拟机分配磁盘（GB，非负）
+  diskAllocatedGB   Decimal? @db.Decimal(10, 2)
+  /// 创建时间
+  createdAt      DateTime @default(now())
+  /// 最后更新时间
+  updatedAt      DateTime @updatedAt
+
+  /// 宿主物理机（自关联，删除宿主受限，禁止级联删除虚拟机）
+  hostServer      Server?  @relation("ServerHost", fields: [hostServerId], references: [id], onDelete: Restrict)
+  /// 该宿主下的全部虚拟机
+  virtualMachines Server[] @relation("ServerHost")
 
   @@index([serverType])
   @@index([status])
   @@index([expireDate])
+  @@index([warrantyEndDate])
+  @@index([hostServerId])
   @@map("servers")
 }
 
@@ -537,4 +585,205 @@ model Miniapp {
 
   @@index([status])
   @@map("miniapps")
+}
+
+/// 网络设备表 — 门店网络设备（网管交换机/企业级路由器/AP等）
+model NetworkDevice {  /// 网络设备主键ID，自增
+  id              Int      @id @default(autoincrement())
+  /// 所属门店ID（外键→stores.id，删除受限）
+  storeId         Int
+  /// 设备类型：交换机/路由器/AP/防火墙/其他
+  deviceType      String   @db.VarChar(20)
+  /// 管理类型：网管型/非网管
+  manageType      String?  @db.VarChar(20)
+  /// 品牌（华为/H3C/锐捷/TP-LINK等）
+  brand           String?  @db.VarChar(50)
+  /// 型号
+  model           String?  @db.VarChar(100)
+  /// 序列号（可空唯一，空串提交转 NULL）
+  serialNo        String?  @db.VarChar(100) @unique
+  /// 管理IP（可空唯一，空串提交转 NULL）
+  managementIp    String?  @db.VarChar(50) @unique
+  /// MAC地址（可空唯一，空串提交转 NULL）
+  macAddress      String?  @db.VarChar(50) @unique
+  /// 端口数
+  portCount       Int?
+  /// 上联口（如 GigabitEthernet1/0/1）
+  uplinkPort      String?  @db.VarChar(50)
+  /// 固件版本
+  firmwareVersion String?  @db.VarChar(50)
+  /// 安装位置（如 一楼弱电井）
+  installLocation String?  @db.VarChar(200)
+  /// 状态：正常/停用/报废
+  status          String   @db.VarChar(10) @default("正常")
+  /// 备注
+  remark          String   @db.VarChar(500) @default("")
+  /// 创建时间
+  createdAt       DateTime @default(now())
+  /// 最后更新时间
+  updatedAt       DateTime @updatedAt
+
+  /// 所属门店
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@index([storeId])
+  @@index([deviceType])
+  @@index([status])
+  @@map("network_devices")
+}
+
+/// 固话表 — 门店/部门固话记录
+model Phone {
+  /// 固话主键ID，自增
+  id              Int      @id @default(autoincrement())
+  /// 所属门店ID（外键→stores.id，删除受限）
+  storeId         Int
+  /// 所属部门（信息部/收银/生鲜等）
+  department      String?  @db.VarChar(100)
+  /// 固话号码（唯一，必填）
+  phoneNumber     String   @db.VarChar(30) @unique
+  /// 分机号
+  extension       String?  @db.VarChar(20)
+  /// 运营商：电信/移动/联通/其他
+  carrier         String?  @db.VarChar(20)
+  /// 月租（元）
+  monthlyFee      Decimal? @db.Decimal(10, 2)
+  /// 套餐说明
+  packageInfo     String?  @db.VarChar(200)
+  /// 使用人
+  user            String?  @db.VarChar(50)
+  /// 安装位置
+  installLocation String?  @db.VarChar(200)
+  /// 状态：正常/停用/报废
+  status          String   @db.VarChar(10) @default("正常")
+  /// 备注
+  remark          String   @db.VarChar(500) @default("")
+  /// 创建时间
+  createdAt       DateTime @default(now())
+  /// 最后更新时间
+  updatedAt       DateTime @updatedAt
+
+  /// 所属门店
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@index([storeId])
+  @@index([carrier])
+  @@index([status])
+  @@map("phones")
+}
+
+/// 电脑表 — 门店电脑（配置 + IP 信息）
+model Computer {
+  /// 电脑主键ID，自增
+  id               Int      @id @default(autoincrement())
+  /// 所属门店ID（外键→stores.id，删除受限）
+  storeId          Int
+  /// 资产编号（可空唯一，空串提交转 NULL）
+  assetNo          String?  @db.VarChar(50) @unique
+  /// 所属部门
+  department       String?  @db.VarChar(100)
+  /// 品牌（联想/戴尔/HP等）
+  brand            String?  @db.VarChar(50)
+  /// 型号
+  model            String?  @db.VarChar(100)
+  /// 序列号（可空唯一，空串提交转 NULL）
+  serialNo         String?  @db.VarChar(100) @unique
+  /// 使用人
+  user             String?  @db.VarChar(50)
+  /// CPU型号
+  cpuModel         String?  @db.VarChar(100)
+  /// CPU核数
+  cpuCores         Int?
+  /// 内存（GB）
+  memoryGB         Int?
+  /// 硬盘容量（GB）
+  diskSizeGB       Int?
+  /// 硬盘类型：SSD/HDD/SSD+HDD
+  diskType         String?  @db.VarChar(20)
+  /// IP地址
+  ipAddress        String?  @db.VarChar(50)
+  /// MAC地址（可空唯一，空串提交转 NULL）
+  macAddress       String?  @db.VarChar(50) @unique
+  /// 操作系统（Windows/Linux/macOS）
+  os               String?  @db.VarChar(50)
+  /// 系统版本
+  osVersion        String?  @db.VarChar(50)
+  /// 采购日期（DATE）
+  purchaseDate     DateTime? @db.Date
+  /// 保修到期（DATE）
+  warrantyEndDate  DateTime? @db.Date
+  /// 状态：正常/停用/报废
+  status           String   @db.VarChar(10) @default("正常")
+  /// 备注
+  remark           String   @db.VarChar(500) @default("")
+  /// 创建时间
+  createdAt        DateTime @default(now())
+  /// 最后更新时间
+  updatedAt        DateTime @updatedAt
+
+  /// 所属门店
+  store            Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@index([storeId])
+  @@index([status])
+  @@map("computers")
+}
+
+/// 电子称表 — 门店电子称（含校准信息）
+model Scale {
+  /// 电子称主键ID，自增
+  id                    Int      @id @default(autoincrement())
+  /// 所属门店ID（外键→stores.id，删除受限）
+  storeId               Int
+  /// 资产编号（可空唯一，空串提交转 NULL）
+  assetNo               String?  @db.VarChar(50) @unique
+  /// 品牌（寺冈/顶尖/大华等）
+  brand                 String?  @db.VarChar(50)
+  /// 型号
+  model                 String?  @db.VarChar(100)
+  /// 序列号（可空唯一，空串提交转 NULL）
+  serialNo              String?  @db.VarChar(100) @unique
+  /// 量程（kg）
+  capacityKg            Decimal? @db.Decimal(10, 2)
+  /// 精度（g）
+  precisionG            Decimal? @db.Decimal(8, 2)
+  /// 接口：RS232/USB/WiFi/蓝牙
+  interface             String?  @db.VarChar(20)
+  /// 上次校准日期（DATE）
+  lastCalibrationDate   DateTime? @db.Date
+  /// 下次校准日期（DATE，提醒依据）
+  nextCalibrationDate   DateTime? @db.Date
+  /// 校准周期（天）
+  calibrationCycleDays  Int?
+  /// 安装位置（如 收银台3号）
+  installLocation       String?  @db.VarChar(200)
+  /// 状态：正常/停用/报废
+  status                String   @db.VarChar(10) @default("正常")
+  /// 备注
+  remark                String   @db.VarChar(500) @default("")
+  /// 创建时间
+  createdAt             DateTime @default(now())
+  /// 最后更新时间
+  updatedAt             DateTime @updatedAt
+
+  /// 所属门店
+  store                 Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@index([storeId])
+  @@index([status])
+  @@map("scales")
+}
+
+/// 系统设置表 — 存储系统级 key-value 配置参数（如财年起始月），供各业务模块读取
+model AppSetting {
+  /// 设置键名（主键），如 startMonth 表示财年起始月
+  key         String   @id @db.VarChar(50)
+  /// 设置值（字符串存储，按键名语义解析）
+  value       String   @db.VarChar(255)
+  /// 设置说明（中文描述该参数的作用与取值范围）
+  description String?  @db.VarChar(500)
+  /// 最后更新时间（自动维护）
+  updatedAt   DateTime @updatedAt
+
+  @@map("app_settings")
 }

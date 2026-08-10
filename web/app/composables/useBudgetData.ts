@@ -6,6 +6,10 @@
 import { useApi, getApiErrorMessage } from './useApi'
 import { ElMessage } from 'element-plus'
 import ExcelJS from 'exceljs'
+import { useSettingsData } from './useSettingsData'
+import {
+  getFiscalYearMonths, getMonthLabel, isFeeActiveInMonth, formatFeeRange, shiftFeeRangeByYear,
+} from '~/utils/fiscal'
 import type { BudgetDetail, BudgetExecution } from '~/types/budget'
 export type { BudgetDetail, BudgetExecution }
 
@@ -33,57 +37,6 @@ export const defaultStoreCategory = { category: '门店', color: 'var(--color-in
 /** 获取门店分类信息 */
 export function getStoreCategory(storeName: string) {
   return storeCategoryMap[storeName] ?? defaultStoreCategory
-}
-
-/** 生成指定财年的12个月份数组（财年=4月~次年3月） */
-export function getFiscalYearMonths(year: number): string[] {
-  return [
-    `${year}-04`, `${year}-05`, `${year}-06`, `${year}-07`, `${year}-08`, `${year}-09`,
-    `${year}-10`, `${year}-11`, `${year}-12`, `${year + 1}-01`, `${year + 1}-02`, `${year + 1}-03`,
-  ]
-}
-
-/** 月份显示标签：从 "2026-04" 提取 "4月" */
-export function getMonthLabel(month: string): string {
-  const parts = month.split('-')
-  return `${parseInt(parts[1] ?? '1')}月`
-}
-
-// 26财年月份（保留作为默认引用）
-export const fiscalYearMonths = getFiscalYearMonths(2026)
-
-// 月份显示标签（保留作为默认引用）
-export const monthLabels: Record<string, string> = Object.fromEntries(
-  fiscalYearMonths.map(m => [m, getMonthLabel(m)])
-)
-
-/** 判断费用项在某月是否生效（feeRange格式为 "YYYY-MM~YYYY-MM"） */
-export function isFeeActiveInMonth(feeRange: string, month: string): boolean {
-  if (!feeRange) return true // 空范围 = 全年有效
-  const parts = feeRange.split('~')
-  if (parts.length !== 2) return true
-  const start = parts[0]?.trim() ?? ''
-  const end = parts[1]?.trim() ?? ''
-  // YYYY-MM 格式可直接按字符串比较
-  return month >= start && month <= end
-}
-
-/** 格式化费用范围用于表格显示："2026-01~2026-12" → "2026年1月~12月" */
-export function formatFeeRange(range: string): string {
-  if (!range) return ''
-  const parts = range.split('~')
-  if (parts.length !== 2) return range
-  const start = parts[0]?.trim() ?? ''
-  const end = parts[1]?.trim() ?? ''
-  const y1 = start.split('-')[0]
-  const m1 = start.split('-')[1]
-  const y2 = end.split('-')[0]
-  const m2 = end.split('-')[1]
-  if (!y1 || !m1 || !y2 || !m2) return range
-  if (y1 === y2) {
-    return `${y1}年${parseInt(m1)}月~${parseInt(m2)}月`
-  }
-  return `${y1}年${parseInt(m1)}月~${y2}年${parseInt(m2)}月`
 }
 
 // 全局共享状态（单例）
@@ -130,6 +83,14 @@ async function deleteDetail(id: number) {
   await fetchDetails()
 }
 
+/** 删除整个财年的预算明细与执行对比数据（事务，不可恢复） */
+async function deleteFiscalYear(year: number): Promise<{ detailCount: number; executionCount: number }> {
+  const { delete: del } = useApi()
+  const result = await del<{ success: boolean; detailCount: number; executionCount: number }>(`/api/budgets/fiscal-year/${year}`)
+  await Promise.all([fetchDetails(), fetchExecutions()])
+  return { detailCount: result.detailCount, executionCount: result.executionCount }
+}
+
 /** 导入失败时后端返回的错误明细（含 Excel 行号与原因） */
 export interface BudgetImportErrorItem {
   row: number
@@ -146,6 +107,15 @@ async function downloadBudgetTemplate() {
   headerRow.font = { bold: true }
   headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDF6EC' } }
   headerRow.alignment = { vertical: 'middle', horizontal: 'center' }
+
+  // 示例行（浅色底纹；门店为"示例门店"，导入解析时会自动跳过，也可手动删除）
+  const exampleRow = ws.addRow([
+    2026, '示例门店', '电信', '宽带', 100, 1200, '2026-04~2027-03', '100M', '月缴费',
+    '示例行：参照本行填写后删除本行',
+  ])
+  exampleRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FF' } }
+  exampleRow.font = { color: { argb: 'FF909399' } }
+  ws.getCell(2, 1).note = '示例行：参照本行格式填写，导入前请删除本行（导入时系统会自动跳过）'
 
   const widths = [10, 18, 10, 12, 12, 12, 22, 16, 12, 40]
   widths.forEach((width, i) => { ws.getColumn(i + 1).width = width })
@@ -179,9 +149,12 @@ async function downloadBudgetTemplate() {
 }
 
 /** 上传 Excel 导入预算明细（整批拒绝/跳过重复由后端处理），成功后刷新数据 */
-async function importBudget(file: File): Promise<{ count: number; skipped: number }> {
+async function importBudget(file: File, defaultFeeRange = ''): Promise<{ count: number; skipped: number }> {
   const formData = new FormData()
   formData.append('file', file)
+  if (defaultFeeRange) {
+    formData.append('defaultFeeRange', defaultFeeRange)
+  }
   const { post } = useApi()
   const result = await post<{ success: boolean; count: number; skipped: number }>('/api/budgets/import', formData)
   await fetchDetails()
@@ -205,8 +178,9 @@ export function useBudgetData() {
 
   /** 汇总矩阵：门店×月份（按指定财年，按费用范围逐月计算） */
   function getSummaryMatrix(fiscalYear: number) {
+    const { fiscalYearStartMonth } = useSettingsData()
     const yearDetails = budgetDetails.value.filter(d => d.fiscalYear === fiscalYear)
-    const months = getFiscalYearMonths(fiscalYear)
+    const months = getFiscalYearMonths(fiscalYear, fiscalYearStartMonth.value)
     const stores = [...new Set(yearDetails.map(d => d.storeName))]
     const rows = stores.map(store => {
       const storeDetails = yearDetails.filter(d => d.storeName === store)
@@ -271,7 +245,7 @@ export function useBudgetData() {
         feeType: d.feeType,
         monthlyFee: d.monthlyFee,
         annualFee: d.annualFee,
-        feeRange: d.feeRange,
+        feeRange: shiftFeeRangeByYear(d.feeRange, 1),
         broadbandType: d.broadbandType,
         paymentMethod: d.paymentMethod,
         remark: d.remark,
@@ -301,6 +275,7 @@ export function useBudgetData() {
     addDetail,
     updateDetail,
     deleteDetail,
+    deleteFiscalYear,
     downloadBudgetTemplate,
     importBudget,
   }

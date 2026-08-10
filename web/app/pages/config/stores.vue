@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="部门门店机构管理">
+    <PageHeader
+      title="部门门店机构管理"
+      subtitle="组织架构与门店数据源"
+      :description="`管理各部门、门店、机构的名称和排序。门店数据同步至计提模板等模块，禁用的门店不会出现在其他模块的下拉选项中。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -9,21 +13,13 @@
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理各部门、门店、机构的名称和排序</p>
-        <p>2. 门店数据同步至计提模板等模块，新增/修改后其他页面自动更新</p>
-        <p>3. 禁用的门店不会出现在其他模块的下拉选项中</p>
-        <p>4. 支持按排序号排列，序号越小越靠前</p>
-      </div>
-    </el-alert>
-
     <div class="card">
       <CrudTable
+        v-if="storeList.length > 0 || loading"
         :columns="columns"
         :data="storeList"
         :loading="loading"
+        :action-width="140"
         @edit="handleEdit"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
@@ -35,16 +31,24 @@
         </template>
         <template #actions="{ row }">
           <el-button size="small" @click="handleEdit(row)">编辑</el-button>
-          <el-button
-            size="small"
-            :type="row.status === 1 ? 'warning' : 'success'"
-            @click="handleToggleStatus(row)"
-          >
-            {{ row.status === 1 ? '禁用' : '启用' }}
-          </el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
+            <el-button size="small" text>
+              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="toggle">
+                  {{ row.status === 1 ? '禁用' : '启用' }}
+                </el-dropdown-item>
+                <el-dropdown-item command="delete" divided>
+                  <span style="color: var(--color-danger)">删除</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无门店数据" />
     </div>
 
     <EditDialog
@@ -60,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getApiErrorMessage } from '~/composables/useApi'
 
@@ -176,6 +180,12 @@ async function handleToggleStatus(row: any) {
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error))
   }
+}
+
+// —— 操作下拉菜单 ——
+function handleActionCommand(command: string, row: any) {
+  if (command === 'toggle') handleToggleStatus(row)
+  else if (command === 'delete') handleDelete(row)
 }
 </script>
 

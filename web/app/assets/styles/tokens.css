@@ -36,6 +36,22 @@
   --server-type-aliyun-bg: #FFF8F0;      --server-type-aliyun-hover: #FFEFD9;      /* 阿里云 - 浅橙 */
   --server-type-tencent-bg: #F0FFF4;     --server-type-tencent-hover: #DFFAE6;     /* 腾讯云 - 浅绿 */
   --server-type-huawei-bg: #FAF5FF;      --server-type-huawei-hover: #F0E6FF;      /* 华为云 - 浅紫 */
+
+  /* —— 虚拟化平台底色（卡片/行区分 PVE 与 ESXi）—— */
+  --platform-pve-bg: #E8F1FB;            --platform-pve-hover: #D3E4F7;            /* PVE - 浅蓝 */
+  --platform-esxi-bg: #FDF0E6;           --platform-esxi-hover: #FAE3CC;           /* ESXi - 浅橙 */
+  /* 平台 Tag 文字/边框色（卡片标题区与列表平台列统一使用） */
+  --platform-pve-text: #3370CC;          --platform-pve-border: #B3D3F5;
+  --platform-esxi-text: #B4550E;         --platform-esxi-border: #F0C79B;
+
+  /* —— 服务器视觉 Tone 色板（三卡片+列表统一；bg=浅底 / border=边框 / text=文字）—— */
+  --tone-pve-bg: #E8F1FB;        --tone-pve-border: #B3D3F5;        --tone-pve-text: #3370CC;        /* PVE - 蓝体系 */
+  --tone-esxi-bg: #FDF0E6;       --tone-esxi-border: #F0C79B;       --tone-esxi-text: #B4550E;       /* ESXi - 橙体系 */
+  --tone-aliyun-bg: #FFF7E8;     --tone-aliyun-border: #F5D9A8;     --tone-aliyun-text: #B76E00;     /* 阿里云 - 橙黄体系 */
+  --tone-tencent-bg: #ECF7F0;    --tone-tencent-border: #BFE3CC;    --tone-tencent-text: #2E7D4F;    /* 腾讯云 - 绿体系 */
+  --tone-huawei-bg: #FAF5FF;     --tone-huawei-border: #E3D1F5;     --tone-huawei-text: #7A4DAB;     /* 华为云 - 紫体系 */
+  --tone-local-bg: #F2F6FA;      --tone-local-border: #D3DEE8;      --tone-local-text: #4A6A85;      /* 本地物理机 - 中性灰蓝体系 */
+  --tone-other-bg: #F4F4F5;       --tone-other-border: #DCDFE6;      --tone-other-text: #909399;      /* 其他 - 中性灰体系 */
   --server-type-other-bg: #F4F4F5;       --server-type-other-hover: #E9E9EB;       /* 其他/自定义 - 浅灰 */
 
   /* —— 域名证书类型行底色 —— */
@@ -68,6 +84,14 @@
   --type-integrator: #9b59b6;    /* 施工方/采购 - 紫 */
   --type-software: #13c2c2;      /* 软件供应商/维保 - 青 */
   --type-other: #909399;         /* 其他 - 灰 */
+
+  /* —— 配置摘要语义色（仅图标/标签着色，数值保持 --text-primary）—— */
+  --spec-cpu: #409eff;            /* CPU - 蓝 */
+  --spec-memory: #9b59b6;         /* 内存 - 紫 */
+  --spec-disk: #13c2c2;           /* 磁盘 - 青绿 */
+
+  /* —— 等宽字体（IP 地址、规格数值等）—— */
+  --font-family-mono: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
 
   /* —— 文字色 —— */
   --text-primary: #303133;
@@ -103,15 +127,48 @@
   --spacing-sm: 8px;
   --spacing-table-row: 48px;
 
-  /* —— 圆角 —— */
-  --radius-card: 8px;
-  --radius-btn: 4px;
-  --radius-input: 4px;
-  --radius-dialog: 8px;
-  --radius-small: 3px;        /* 小圆角（拖拽上传提示等） */
+  /* —— 圆角（vben 借鉴：卡片更圆、控件圆润）—— */
+  --radius-card: 12px;
+  --radius-btn: 6px;
+  --radius-input: 6px;
+  --radius-dialog: 12px;
+  --radius-md: 10px;          /* 中等圆角（菜单激活项/徽标等） */
+  --radius-small: 4px;        /* 小圆角（拖拽上传提示等） */
 
-  /* —— 阴影 —— */
-  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
-  --shadow-dialog: 0 2px 16px rgba(0, 0, 0, 0.08);
+  /* —— 阴影（柔和轻量，vben 风格）—— */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.10);
+  --shadow-dialog: 0 4px 24px rgba(0, 0, 0, 0.12);
   --shadow-hover: 0 4px 16px rgba(230, 162, 60, 0.15);
+
+  /* —— 侧边栏（低饱和深蓝灰系，非纯黑）—— */
+  --sidebar-bg: #1E2A3A;
+  --sidebar-bg-hover: #2A3A4F;
+  --sidebar-bg-active: #1A2332;
+  --sidebar-text: #A0AEC0;
+  --sidebar-text-active: #FFFFFF;
+  --sidebar-text-disabled: #4A5568;
+  --sidebar-indicator: var(--color-primary);
+  --sidebar-width: 220px;
+  --sidebar-width-collapsed: 64px;
+  --sidebar-logo-bg: #172127;
+
+  /* —— 层级（z-index）—— */
+  --z-sidebar: 1000;
+  --z-header: 1100;
+  --z-dropdown: 2000;
+  --z-drawer: 3000;
+  --z-dialog: 4000;
+  --z-tooltip: 5000;
+
+  /* —— 过渡 —— */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* —— 内容区 —— */
+  --header-height: 56px;
+  --header-bg: var(--bg-card);
+  --header-border: var(--border-lighter);
+  --content-bg: var(--bg-page);
 }

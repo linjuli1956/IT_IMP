@@ -54,8 +54,44 @@ const HEADER_ALIASES: Record<string, string[]> = {
 /** 数据行必需列（表头缺失时直接整批拒绝） */
 const REQUIRED_COLUMNS: Array<keyof BudgetImportRow> = ['fiscalYear', 'storeName', 'carrier', 'feeType']
 
-/** 费用范围格式：YYYY-MM~YYYY-MM */
-const FEE_RANGE_PATTERN = /^\d{4}-\d{2}~\d{4}-\d{2}$/
+/** 模板示例行的门店名（导入时自动跳过，防止示例数据误入库） */
+export const EXAMPLE_STORE_NAME = '示例门店'
+
+/** 费用范围格式：YYYY-MM~YYYY-MM（月份限定 01~12） */
+const FEE_RANGE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])~\d{4}-(0[1-9]|1[0-2])$/
+
+/** 校验费用范围是否合法：空=全年有效；非空须为 YYYY-MM~YYYY-MM（月份 01~12）且结束不早于开始 */
+export function isFeeRangeValid(feeRange: string): boolean {
+  if (feeRange === '') return true
+  if (!FEE_RANGE_PATTERN.test(feeRange)) return false
+  const [s1, e1] = feeRange.split('~')
+  return (e1 ?? '') >= (s1 ?? '')
+}
+
+/**
+ * 导入去重：过滤掉与已有数据重复（existingKeys）、以及同一文件内重复的
+ * 财年+门店+运营商+费用类型 行，返回待导入行与跳过数量。
+ * @param rows 已通过格式校验的数据行
+ * @param existingKeys 数据库已存在的组合 key 集合（`财年|门店|运营商|费用类型`）
+ */
+export function dedupeBudgetRows(
+  rows: BudgetImportRow[],
+  existingKeys: ReadonlySet<string>,
+): { rows: BudgetImportRow[]; skipped: number } {
+  const result: BudgetImportRow[] = []
+  const seenKeys = new Set<string>() // 文件内去重
+  let skipped = 0
+  for (const row of rows) {
+    const key = `${row.fiscalYear}|${row.storeName}|${row.carrier}|${row.feeType}`
+    if (existingKeys.has(key) || seenKeys.has(key)) {
+      skipped++
+      continue
+    }
+    seenKeys.add(key)
+    result.push(row)
+  }
+  return { rows: result, skipped }
+}
 
 /** 单元格转字符串并去除首尾空白 */
 function cellText(cell: unknown): string {
@@ -74,12 +110,13 @@ function cellNumber(cell: unknown): number {
 /**
  * 解析并校验预算导入 XLSX 内容。
  * @param buffer XLSX 文件内容（.xlsx / .xls 均可，由 xlsx 库自动识别）
+ * @param defaultFeeRange 默认费用范围（YYYY-MM~YYYY-MM）；模板中费用范围为空的导入时自动填充
  * @returns 通过校验的行与错误明细；errors 非空时调用方应整批拒绝导入
  */
-export function parseBudgetRows(buffer: Buffer): BudgetParseResult {
+export function parseBudgetRows(buffer: Buffer, defaultFeeRange = ''): BudgetParseResult {
   const workbook = XLSX.read(buffer, { type: 'buffer' })
   const sheetName = workbook.SheetNames[0]
-  const worksheet = workbook.Sheets[sheetName]
+  const worksheet = sheetName ? workbook.Sheets[sheetName] : undefined
   if (!worksheet) {
     return { rows: [], errors: [{ row: 0, message: '文件中没有可读取的 Sheet' }] }
   }
@@ -110,7 +147,7 @@ export function parseBudgetRows(buffer: Buffer): BudgetParseResult {
     const header = headerCells[j]
     if (!header) continue
     for (const key of Object.keys(HEADER_ALIASES) as Array<keyof BudgetImportRow>) {
-      if (HEADER_ALIASES[key].includes(header)) {
+      if ((HEADER_ALIASES[key] ?? []).includes(header)) {
         colIndex[key] = j
         break
       }
@@ -122,7 +159,7 @@ export function parseBudgetRows(buffer: Buffer): BudgetParseResult {
     if (colIndex[key] === undefined) {
       return {
         rows: [],
-        errors: [{ row: headerRowIdx + 1, message: `缺少必需列「${HEADER_ALIASES[key][0]}」` }],
+        errors: [{ row: headerRowIdx + 1, message: `缺少必需列「${HEADER_ALIASES[key]?.[0] ?? key}」` }],
       }
     }
   }
@@ -141,11 +178,16 @@ export function parseBudgetRows(buffer: Buffer): BudgetParseResult {
     // 全空行跳过（不报错）
     if (row.every(cell => cellText(cell) === '')) continue
 
+    const storeName = cellText(idx('storeName'))
+    // 模板示例行自动跳过（防止示例数据误入库）
+    if (storeName === EXAMPLE_STORE_NAME) continue
+
     const fiscalYearText = cellText(idx('fiscalYear'))
     const fiscalYear = Number(fiscalYearText)
     const monthlyFee = cellNumber(idx('monthlyFee'))
     const annualFee = cellNumber(idx('annualFee'))
-    const feeRange = cellText(idx('feeRange'))
+    // 费用范围：模板填写优先，为空时填充默认费用范围
+    const feeRange = cellText(idx('feeRange')) || defaultFeeRange
 
     // 逐字段校验，首个错误即记录并跳过该行
     if (fiscalYearText === '' || !Number.isInteger(fiscalYear) || fiscalYear < 2000 || fiscalYear > 2100) {
@@ -176,14 +218,14 @@ export function parseBudgetRows(buffer: Buffer): BudgetParseResult {
       errors.push({ row: excelRow, message: '费用范围格式应为 YYYY-MM~YYYY-MM（如 2026-04~2027-03）' })
       continue
     }
-    if (feeRange !== '' && feeRange.split('~')[1] < feeRange.split('~')[0]) {
+    if (feeRange !== '' && (feeRange.split('~')[1] ?? '') < (feeRange.split('~')[0] ?? '')) {
       errors.push({ row: excelRow, message: '费用范围结束日期不能早于开始日期' })
       continue
     }
 
     results.push({
       fiscalYear,
-      storeName: cellText(idx('storeName')),
+      storeName,
       carrier: cellText(idx('carrier')),
       feeType: cellText(idx('feeType')),
       monthlyFee,

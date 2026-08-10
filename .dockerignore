@@ -32,3 +32,6 @@ deploy/docker/*
 **/*.md
 **/*.log
 **/*.tmp
+
+# 视觉回归脚本（仅本地开发用，不进入发布包）
+web/scripts/visual-regression

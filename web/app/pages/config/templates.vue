@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="计提模板管理">
+    <PageHeader
+      title="计提模板管理"
+      subtitle="运营商+门店计提规则配置"
+      :description="`每个运营商+门店一套模板，点击「编辑明细」配置模板行。电信模板填号码匹配明细表，联通/移动填费用类型直接填发票金额。报销说明支持 4 种预设格式或自定义。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -9,23 +13,13 @@
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 每个运营商+门店一套模板，点击“编辑明细”配置模板行</p>
-        <p>2. 电信模板“名称/号码”列填演示号码（如 DEMO_PHONE），用于匹配运营商明细表</p>
-        <p>3. 联通/移动模板“名称/号码”列填费用类型（如宽带固话），直接填发票金额</p>
-        <p>4. “固话及其他费用”等非号码行通过倒推计算（发票总额 - 其他号码行费用之和）</p>
-        <p>5. 承担部门默认为模板绑定的门店，特殊行（如多部门分摊费用）可手动修改</p>
-        <p>6. 报销说明可配置4种预设格式或自定义，点击“预览效果”查看生成结果</p>
-      </div>
-    </el-alert>
-
     <div class="card">
       <CrudTable
+        v-if="templateList.length > 0 || loading"
         :columns="columns"
         :data="templateList"
         :loading="loading"
+        :action-width="160"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
       >
@@ -36,11 +30,23 @@
           <el-tag size="small" type="info">{{ row.itemCount }} 行</el-tag>
         </template>
         <template #actions="{ row }">
-          <el-button size="small" @click="handleViewDetail(row)">查看</el-button>
           <el-button size="small" type="primary" @click="handleEditDetail(row)">编辑明细</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
+            <el-button size="small" text>
+              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="view">查看</el-dropdown-item>
+                <el-dropdown-item command="delete" divided>
+                  <span style="color: var(--color-danger)">删除</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无计提模板" />
     </div>
 
     <!-- 新增模板弹窗 -->
@@ -146,7 +152,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, InfoFilled, View } from '@element-plus/icons-vue'
+import { Plus, InfoFilled, View, ArrowDown } from '@element-plus/icons-vue'
 
 // 运营商选项
 const carrierOptions = [
@@ -396,6 +402,12 @@ async function handleBatchDelete(rows: any[]) {
     ElMessage.success(`已删除 ${successCount} 项`)
   }
 }
+
+// —— 操作下拉菜单 ——
+function handleActionCommand(command: string, row: any) {
+  if (command === 'view') handleViewDetail(row)
+  else if (command === 'delete') handleDelete(row)
+}
 </script>
 
 <style scoped>
@@ -423,15 +435,6 @@ async function handleBatchDelete(rows: any[]) {
 
 .add-row-bar {
   margin-top: 12px;
-}
-
-.usage-alert {
-  margin-bottom: 16px;
-}
-
-.usage-tips p {
-  margin: 4px 0;
-  line-height: 1.6;
 }
 
 .var-hint {

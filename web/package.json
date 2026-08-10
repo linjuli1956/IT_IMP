@@ -8,7 +8,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit -p .nuxt/tsconfig.app.json"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -41,6 +42,8 @@
     "@types/node": "^26.1.1",
     "prisma": "^7.9.0",
     "tsx": "^4.23.1",
-    "vitest": "^3.2.7"
+    "typescript": "5.9",
+    "vitest": "^3.2.7",
+    "vue-tsc": "^3.3.9"
   }
 }

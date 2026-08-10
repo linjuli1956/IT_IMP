@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="域名管理">
+    <PageHeader
+      title="域名管理"
+      subtitle="域名与 SSL 证书台账"
+      :description="`管理阿里云域名及其主账号凭证。记录 SSL 证书类型（DV/OV/EV）、颁发机构、到期日期。敏感信息默认脱敏显示。证书到期提醒：30 天标橙、7 天标红。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -8,16 +12,6 @@
         </el-button>
       </template>
     </PageHeader>
-
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理阿里云域名及其主账号凭证信息</p>
-        <p>2. 记录SSL证书类型（DV/OV/EV）、颁发机构、更换日期和到期日期</p>
-        <p>3. 敏感信息（主账号、主账号密码）默认脱敏显示，点击眼睛图标可切换显示/隐藏</p>
-        <p>4. 证书到期提醒：30天内标橙色，7天内标红色，已过期标红色</p>
-      </div>
-    </el-alert>
 
     <!-- 概览卡片 -->
     <el-row :gutter="16" class="stat-row">
@@ -43,6 +37,7 @@
     <!-- 表格 -->
     <div class="card">
       <CrudTable
+        v-if="filteredDomains.length > 0 || loading"
         :columns="columns"
         :data="filteredDomains"
         :loading="loading"
@@ -60,6 +55,13 @@
         <template #mainPassword="{ row }">
           <SensitiveValue :value="row.mainPassword" />
         </template>
+        <template #domain="{ row }">
+          <RecordPreviewTooltip :title="row.domain" :rows="buildDomainPreviewRows(row)">
+            <template #reference>
+              <span class="domain-name" tabindex="0" :aria-label="`预览 ${row.domain}`">{{ row.domain }}</span>
+            </template>
+          </RecordPreviewTooltip>
+        </template>
         <template #certType="{ row }">
           <el-tag :type="(certTypeTagMap[row.certType] as any) || 'info'" size="small">{{ row.certType || '—' }}</el-tag>
         </template>
@@ -75,6 +77,7 @@
           <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无域名数据" />
     </div>
 
     <!-- 新增/编辑弹窗 -->
@@ -142,6 +145,8 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Document, CircleCheck, WarningFilled, CircleClose } from '@element-plus/icons-vue'
 import { useDomainData, certTypeOptions, certTypeTagMap, type DomainItem } from '~/composables/useDomainData'
+import { buildDomainPreviewRows } from '~/utils/preview-utils'
+import { getExpireInfo } from '~/utils/asset-utils'
 import { getContractStatus, getDaysLeft } from '~/composables/useContractData'
 import { getApiErrorMessage } from '~/composables/useApi'
 
@@ -189,8 +194,7 @@ const statusFilters = [
   { text: '停用', value: '停用' },
 ]
 
-const columns = computed(() => [
-  { prop: 'domain', label: '域名', minWidth: 200 },
+const columns = computed(() => [  { prop: 'domain', label: '域名', minWidth: 200, slot: 'domain' },
   { prop: 'mainAccount', label: '主账号', width: 180, slot: 'mainAccount' },
   { prop: 'mainPassword', label: '主账号密码', width: 180, slot: 'mainPassword' },
   { prop: 'certType', label: '证书类型', width: 90, align: 'center' as const, slot: 'certType', filters: certTypeFilters.value, filterMethod: (v: any, r: any) => r.certType === v },
@@ -265,6 +269,8 @@ function handleAdd() {
   })
   dialogVisible.value = true
 }
+
+
 
 function handleEdit(row: any) {
   const d = row as DomainItem

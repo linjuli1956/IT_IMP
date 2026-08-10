@@ -1,7 +1,11 @@
 <template>
   <div class="page-container">
-    <PageHeader title="首页数据大屏" />
+    <PageHeader
+      title="首页数据大屏"
+      :subtitle="`${currentYear}年${currentMonth}月 · 财年${currentFiscalYear}`"
+    />
 
+    <div v-loading="pageLoading" class="dashboard-body">
     <!-- 第一行：业务指标卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6" v-for="(stat, i) in businessStats" :key="'biz-' + i">
@@ -28,7 +32,7 @@
 
     <el-row :gutter="16" class="chart-row">
       <el-col :span="12">
-        <ChartCard title="发票批次状态分布" :option="batchStatusOption" />
+        <ChartCard title="费用类型分布" :option="feeTypeOption" />
       </el-col>
       <el-col :span="12">
         <ChartCard title="运营商预算排名" :option="carrierRankOption" />
@@ -46,6 +50,7 @@
               <span class="type-count">{{ item.count }} 台</span>
             </div>
           </div>
+          <EmptyState v-if="serverTypeDistribution.length === 0" description="暂无服务器数据" />
         </div>
       </el-col>
       <el-col :span="14">
@@ -67,7 +72,7 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="expiringServers.length === 0" description="暂无即将到期服务器" :image-size="60" />
+          <EmptyState v-if="expiringServers.length === 0" description="暂无即将到期服务器" />
         </div>
       </el-col>
     </el-row>
@@ -87,7 +92,8 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-if="contractAlerts.length === 0" description="暂无即将到期合同" :image-size="60" />
+      <EmptyState v-if="contractAlerts.length === 0" description="暂无即将到期合同" />
+    </div>
     </div>
   </div>
 </template>
@@ -98,9 +104,10 @@ import {
   Monitor, Link, Cellphone, WarningFilled,
 } from '@element-plus/icons-vue'
 import {
-  useBudgetData, getFiscalYearMonths, getMonthLabel,
-  isFeeActiveInMonth, budgetCarriers,
+  useBudgetData, budgetCarriers,
 } from '~/composables/useBudgetData'
+import { getFiscalYearMonths, getMonthLabel, isFeeActiveInMonth } from '~/utils/fiscal'
+import { useSettingsData } from '~/composables/useSettingsData'
 import { useInvoiceData } from '~/composables/useInvoiceData'
 import { useAccrualData } from '~/composables/useAccrualData'
 import { useContractData, getContractStatus, getDaysLeft } from '~/composables/useContractData'
@@ -115,30 +122,43 @@ const { budgetDetails, getSummaryMatrix, fetchDetails: fetchBudgets } = useBudge
 const { batchList, fetchBatches } = useInvoiceData()
 const { accrualList, fetchAccruals } = useAccrualData()
 const { contractList, fetchContracts } = useContractData()
-const { serverList, expiringSoonCount, fetchServers } = useServerData()
+const { serverList, expiringSoonCount, physicalCount, virtualCount, statsUnavailable, fetchServers, fetchServerStats } = useServerData()
 const { domainList, fetchDomains } = useDomainData()
 const { miniappList, fetchMiniapps } = useMiniappData()
 
-onMounted(() => {
-  fetchBudgets()
-  fetchBatches()
-  fetchAccruals()
-  fetchContracts()
-  fetchServers()
-  fetchDomains()
-  fetchMiniapps()
+const pageLoading = ref(true)
+
+onMounted(async () => {
+  try {
+    await Promise.all([
+      fetchBudgets(),
+      fetchBatches(),
+      fetchAccruals(),
+      fetchContracts(),
+      fetchServers(),
+      fetchServerStats(),
+      fetchDomains(),
+      fetchMiniapps(),
+    ])
+  } finally {
+    pageLoading.value = false
+  }
 })
 
 // ====== 当前时间 ======
 const now = new Date()
 const currentYear = now.getFullYear()
 const currentMonth = now.getMonth() + 1
-const currentFiscalYear = currentMonth >= 4 ? currentYear : currentYear - 1
+const { fiscalYearStartMonth } = useSettingsData()
+// 当前财年：按系统设置的财年起始月计算（如起始月=4，则 4月~次年3月为同一财年）
+const currentFiscalYear = computed(() =>
+  currentMonth >= fiscalYearStartMonth.value ? currentYear : currentYear - 1
+)
 const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`
 
 // ====== 业务指标卡片 ======
 const currentMonthBudget = computed(() => {
-  const matrix = getSummaryMatrix(currentFiscalYear)
+  const matrix = getSummaryMatrix(currentFiscalYear.value)
   return matrix.rows.reduce((sum, row) => sum + (Number(row[currentMonthStr]) || 0), 0)
 })
 
@@ -159,10 +179,10 @@ const businessStats = computed(() => [
 
 // ====== IT资产指标卡片 ======
 const itStats = computed(() => [
-  { label: '服务器总数', value: serverList.value.length + ' 台', icon: Monitor, color: 'var(--color-primary)', bg: 'var(--color-primary-light)' },
+  { label: '服务器总数', value: statsUnavailable.value ? '--' : ((physicalCount.value + virtualCount.value) + ' 台'), icon: Monitor, color: 'var(--color-primary)', bg: 'var(--color-primary-light)' },
   { label: '域名总数', value: domainList.value.length + ' 个', icon: Link, color: 'var(--color-success)', bg: 'var(--color-success-light)' },
   { label: '小程序总数', value: miniappList.value.length + ' 个', icon: Cellphone, color: 'var(--color-info)', bg: 'var(--color-info-light)' },
-  { label: '即将到期服务器', value: expiringSoonCount.value + ' 台', icon: WarningFilled, color: 'var(--color-danger)', bg: 'var(--color-danger-light)' },
+  { label: '即将到期服务器', value: statsUnavailable.value ? '--' : (expiringSoonCount.value + ' 台'), icon: WarningFilled, color: 'var(--color-danger)', bg: 'var(--color-danger-light)' },
 ])
 
 // ECharts 配色（JS 库不支持 CSS 变量，值与 tokens.css 一致）
@@ -173,7 +193,7 @@ const colors = ['#E6A23C', '#67C23A', '#409EFF', '#F56C6C', '#909399']
 // ====== 图表数据（从 composable 派生）======
 
 // 当前财年的月份列表
-const fiscalMonths = computed(() => getFiscalYearMonths(currentFiscalYear))
+const fiscalMonths = computed(() => getFiscalYearMonths(currentFiscalYear.value, fiscalYearStartMonth.value))
 
 // 1. 月度预算趋势（按运营商分组）
 // 修复：carrier 使用 budgetCarriers（'电信'/'移动'/'联通'/'其他'），与数据库一致
@@ -187,7 +207,7 @@ const trendOption = computed(() => {
   const series = carriers.map((carrier, idx) => {
     const data = months.map(m => {
       const total = budgetDetails.value
-        .filter(d => d.fiscalYear === currentFiscalYear && d.carrier === carrier)
+        .filter(d => d.fiscalYear === currentFiscalYear.value && d.carrier === carrier)
         .reduce((sum, d) => isFeeActiveInMonth(d.feeRange, m) ? sum + d.monthlyFee : sum, 0)
       return Math.round(total * 100) / 100
     })
@@ -214,7 +234,7 @@ const trendOption = computed(() => {
 // 2. 各门店年度预算（水平柱状图，显示全部门店）
 // 修复：饼图改为水平柱状图，去掉5%合并逻辑，所有门店一览无余
 const storeBudgetOption = computed(() => {
-  const matrix = getSummaryMatrix(currentFiscalYear)
+  const matrix = getSummaryMatrix(currentFiscalYear.value)
   const storeData = matrix.rows
     .map(row => ({
       value: Math.round(Number(row.subtotal || 0) * 100) / 100,
@@ -244,43 +264,34 @@ const storeBudgetOption = computed(() => {
   }
 })
 
-// 3. 发票批次状态分布（饼图，从 batchList 派生）
-// 新增：发票→计提流水线可视化，展示批次在各处理阶段的分布
-const batchStatusOption = computed(() => {
-  const statusLabels: Record<string, string> = {
-    pending: '待计提',
-    accrued: '已计提',
-    printed: '已打印',
-  }
-  const statusColors: Record<string, string> = {
-    pending: colors[3]!,   // #F56C6C 红 — 需处理
-    accrued: colors[0]!,   // #E6A23C 橙 — 进行中
-    printed: colors[1]!,   // #67C23A 绿 — 已完成
-  }
+// 3. 费用类型分布（柱状图）：当前财年按费用类型汇总月度费用
+const feeTypeOption = computed(() => {
+  const feeTypeMap = new Map<string, number>()
+  budgetDetails.value
+    .filter(d => d.fiscalYear === currentFiscalYear.value)
+    .forEach(d => {
+      const current = feeTypeMap.get(d.feeType) || 0
+      feeTypeMap.set(d.feeType, current + d.monthlyFee)
+    })
 
-  const statusMap = new Map<string, number>()
-  batchList.value.forEach(b => {
-    statusMap.set(b.status, (statusMap.get(b.status) || 0) + 1)
-  })
-
-  const data = Array.from(statusMap.entries()).map(([status, count]) => ({
-    name: statusLabels[status] || status,
-    value: count,
-    itemStyle: { color: statusColors[status] || colors[4] },
+  const sorted = Array.from(feeTypeMap.entries()).sort((a, b) => b[1] - a[1])
+  const categories = sorted.map(([name]) => name)
+  const data = sorted.map(([name, value]) => ({
+    value: Math.round(value * 100) / 100,
+    itemStyle: { color: colors[1] },
   }))
 
   return {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} 个 ({d}%)' },
-    legend: { bottom: 0, left: 'center' },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '8%', bottom: '3%', top: '8%', containLabel: true },
+    xAxis: { type: 'value', name: '元/月' },
+    yAxis: { type: 'category', data: categories },
     series: [{
-      type: 'pie',
-      radius: ['40%', '65%'],
-      center: ['50%', '42%'],
-      avoidLabelOverlap: false,
-      itemStyle: { borderRadius: 6, borderColor: '#FFFFFF', borderWidth: 2 }, // #FFFFFF = --color-white
-      label: { show: false },
-      emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+      type: 'bar',
+      barWidth: '50%',
       data,
+      itemStyle: { borderRadius: [0, 4, 4, 0] },
+      label: { show: true, position: 'right', formatter: '¥{c}' },
     }],
   }
 })
@@ -289,7 +300,7 @@ const batchStatusOption = computed(() => {
 const carrierRankOption = computed(() => {
   const carrierMap = new Map<string, number>()
   budgetDetails.value
-    .filter(d => d.fiscalYear === currentFiscalYear)
+    .filter(d => d.fiscalYear === currentFiscalYear.value)
     .forEach(d => {
       const current = carrierMap.get(d.carrier) || 0
       carrierMap.set(d.carrier, current + d.annualFee)
@@ -361,6 +372,11 @@ const contractAlerts = computed(() => {
 </script>
 
 <style scoped>
+.dashboard-body {
+  min-height: 400px;
+  position: relative;
+}
+
 .server-type-list {
   display: flex;
   flex-direction: column;

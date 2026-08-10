@@ -17,12 +17,6 @@ const accrualList = ref<Accrual[]>([])
 const loading = ref(false)
 
 // ============================================
-// 报销说明生成（共享实现，定义在 app/utils/reimbursement.ts）
-// 服务端 generate.post.ts / [id].put.ts 与前端共用同一份实现
-// ============================================
-export { generateReimbursementText } from '~/utils/reimbursement'
-
-// ============================================
 // API 函数
 // ============================================
 

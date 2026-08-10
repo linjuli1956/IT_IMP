@@ -70,7 +70,6 @@
 
 <script setup lang="ts">
 import { ElMessageBox } from 'element-plus'
-import type { ElTable } from 'element-plus'
 
 interface Column {
   prop: string
@@ -120,7 +119,8 @@ const emit = defineEmits<{
   'page-change': [page: number, size: number]
 }>()
 
-const tableRef = ref<InstanceType<typeof ElTable>>()
+// 仅声明实际使用的 ElTable 实例方法，避免泛型组件 InstanceType 约束问题
+const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const currentPage = ref(1)
 const pageSize = ref(10)
 const selectedRows = ref<any[]>([])

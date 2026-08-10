@@ -55,12 +55,34 @@ body {
   background: var(--bg-card);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-lighter);
   padding: var(--spacing-card);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow var(--transition-base), border-color var(--transition-base);
 }
 
 .card:hover {
-  box-shadow: var(--shadow-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* —— 表格观感：表头浅灰、圆角容器 —— */
+.el-table {
+  border-radius: var(--radius-md);
+  --el-table-header-bg-color: #FAFAFC;
+  --el-table-header-text-color: var(--text-regular);
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+}
+
+/* —— 控件圆角跟随 token —— */
+.el-button {
+  border-radius: var(--radius-btn);
+}
+.el-input__wrapper {
+  border-radius: var(--radius-input);
+}
+.el-dialog {
+  border-radius: var(--radius-dialog);
 }
 
 /* 页面标题 */
@@ -160,4 +182,90 @@ body {
 /* 合同到期提醒卡片 */
 .alert-card {
   margin-top: 4px;
+}
+
+/* 虚拟化平台 Tag（统一语义色：PVE 蓝 / ESXi 橙，全部使用 tokens 变量） */
+.platform-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: var(--font-size-mini);
+  font-weight: 600;
+  border-radius: var(--radius-small);
+  line-height: 1;
+  white-space: nowrap;
+}
+.platform-tag--pve {
+  color: var(--platform-pve-text);
+  background: var(--platform-pve-bg);
+  border: 1px solid var(--platform-pve-border);
+}
+.platform-tag--esxi {
+  color: var(--platform-esxi-text);
+  background: var(--platform-esxi-bg);
+  border: 1px solid var(--platform-esxi-border);
+}
+
+/* —— 服务器 Tone 卡片体系（整卡浅底 + 彩色边框/Tag，三卡片统一；仅用 tokens）—— */
+.server-tone-pve    { background: var(--tone-pve-bg);    border-color: var(--tone-pve-border); }
+.server-tone-esxi   { background: var(--tone-esxi-bg);   border-color: var(--tone-esxi-border); }
+.server-tone-aliyun { background: var(--tone-aliyun-bg); border-color: var(--tone-aliyun-border); }
+.server-tone-tencent{ background: var(--tone-tencent-bg);border-color: var(--tone-tencent-border); }
+.server-tone-huawei { background: var(--tone-huawei-bg); border-color: var(--tone-huawei-border); }
+.server-tone-local  { background: var(--tone-local-bg);  border-color: var(--tone-local-border); }
+.server-tone-other  { background: var(--bg-card);        border-color: var(--border-lighter); }
+
+.server-tone-pve    .server-tone-name { color: var(--tone-pve-text); }
+.server-tone-esxi   .server-tone-name { color: var(--tone-esxi-text); }
+.server-tone-aliyun .server-tone-name { color: var(--tone-aliyun-text); }
+.server-tone-tencent .server-tone-name { color: var(--tone-tencent-text); }
+.server-tone-huawei .server-tone-name { color: var(--tone-huawei-text); }
+.server-tone-local  .server-tone-name { color: var(--tone-local-text); }
+
+/* —— 空态/加载态/错误态通用类 —— */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-page);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.empty-state-icon {
+  font-size: var(--font-size-display);
+  color: var(--text-placeholder);
+}
+
+.empty-state-text {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-page);
+  min-height: 120px;
+  color: var(--text-secondary);
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-page);
+  color: var(--color-danger);
+  text-align: center;
+}
+
+.error-state-text {
+  font-size: var(--font-size-body);
+  color: var(--text-regular);
 }

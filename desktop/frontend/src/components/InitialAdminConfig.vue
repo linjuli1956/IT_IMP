@@ -19,7 +19,7 @@ const initialAdmin = defineModel({
       placeholder="至少 6 位"
     />
     <el-text type="info" size="small">
-      仅在点击“初始化数据库”或“重置管理员密码”时使用，不保存到配置文件；默认账号为 admin，默认密码为 123456。
+      仅在点击“初始化数据库”“重置管理员密码”或“补建首次管理员”时使用，不保存到配置文件；请设置至少 6 位的密码。
     </el-text>
   </el-form-item>
 </template>

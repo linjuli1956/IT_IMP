@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
-    <PageHeader title="用户管理">
+    <PageHeader
+      title="用户管理"
+      subtitle="账号与角色权限管理"
+      :description="`角色分为管理员（全部权限）、操作员（日常操作）、查看者（只读）。默认管理员 admin 不可删除/重置密码；新增用户默认密码 123456，可通过「重置密码」恢复。`"
+    >
       <template #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -9,23 +13,23 @@
       </template>
     </PageHeader>
 
-    <el-alert type="info" :closable="false" show-icon class="usage-alert">
-      <template #title>使用说明</template>
-      <div class="usage-tips">
-        <p>1. 管理系统用户账号，支持新增/编辑/删除</p>
-        <p>2. 角色分为：管理员（全部权限）、操作员（日常操作）、查看者（只读）</p>
-        <p>3. 可切换用户启用/禁用状态，禁用用户无法登录</p>
-        <p>4. 默认管理员账号 admin 不可删除/重置密码</p>
-        <p>5. 新增用户默认密码为 123456，可通过"重置密码"功能恢复默认密码</p>
-      </div>
-    </el-alert>
+    <div class="filter-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索用户名或姓名"
+        clearable
+        :prefix-icon="Search"
+        style="width: 240px"
+      />
+    </div>
 
     <div class="card">
       <CrudTable
+        v-if="filteredUserList.length > 0 || tableLoading"
         :columns="columns"
-        :data="userList"
+        :data="filteredUserList"
         :loading="tableLoading"
-        :action-width="280"
+        :action-width="140"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
       >
@@ -41,26 +45,35 @@
         </template>
         <template #actions="{ row }">
           <el-button size="small" @click="handleEdit(row)">编辑</el-button>
-          <el-button
-            size="small"
-            type="warning"
-            :icon="Key"
-            :disabled="row.username === 'admin'"
-            :loading="resetLoadingId === row.id"
-            @click="handleResetPassword(row)"
-          >
-            重置密码
-          </el-button>
-          <el-button
-            size="small"
-            type="danger"
-            :disabled="row.username === 'admin'"
-            @click="handleDelete(row)"
-          >
-            删除
-          </el-button>
+          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
+            <el-button size="small" text :disabled="resetLoadingId === row.id">
+              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  command="reset"
+                  :disabled="row.username === 'admin'"
+                >
+                  <el-icon><Key /></el-icon>
+                  重置密码
+                </el-dropdown-item>
+                <el-dropdown-item
+                  command="delete"
+                  divided
+                  :disabled="row.username === 'admin'"
+                >
+                  <span style="color: var(--color-danger)">删除</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </CrudTable>
+      <EmptyState
+        v-else
+        description="未找到匹配用户"
+      />
     </div>
 
     <EditDialog
@@ -79,7 +92,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Key } from '@element-plus/icons-vue'
+import { Plus, Key, Search, ArrowDown } from '@element-plus/icons-vue'
 import type { User } from '~/types/auth'
 import { useApi, getApiErrorMessage } from '~/composables/useApi'
 
@@ -124,9 +137,26 @@ function getRoleTagType(role: string) {
   return 'info'
 }
 
+// —— 操作下拉菜单 ——
+function handleActionCommand(command: string, row: any) {
+  if (command === 'reset') handleResetPassword(row)
+  else if (command === 'delete') handleDelete(row)
+}
+
 // —— 数据列表 ——
 const userList = ref<User[]>([])
 const tableLoading = ref(false)
+
+// —— 搜索筛选 ——
+const searchKeyword = ref('')
+const filteredUserList = computed(() => {
+  if (!searchKeyword.value) return userList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return userList.value.filter(u =>
+    u.username.toLowerCase().includes(kw) ||
+    u.name.toLowerCase().includes(kw)
+  )
+})
 
 async function fetchUsers() {
   tableLoading.value = true
@@ -300,4 +330,10 @@ function handleResetPassword(row: any) {
 </script>
 
 <style scoped>
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 </style>

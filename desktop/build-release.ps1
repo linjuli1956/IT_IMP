@@ -13,7 +13,7 @@ if (-not (Test-Path -LiteralPath $versionFile)) {
 }
 $releaseVersion = (Get-Content -LiteralPath $versionFile -Raw).Trim()
 if ($releaseVersion -notmatch '^\d{8}$') {
-    throw "VERSION must use YYYYMMDD format, for example 20260805. Current value: $releaseVersion"
+    throw "VERSION must use YYYYMMDD format, for example 20260810. Current value: $releaseVersion"
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -95,7 +95,7 @@ $releaseBunDirectory = Join-Path $OutputDirectory "bun"
 New-Item -ItemType Directory -Path $releaseWebDirectory,$releaseBunDirectory -Force | Out-Null
 
 Copy-Item (Join-Path $desktopSourceDirectory "build\bin\platform-config.exe") (Join-Path $OutputDirectory "platform-config.exe")
-Copy-Item (Join-Path $desktopSourceDirectory "build\bin\config.json") (Join-Path $OutputDirectory "config.json") -ErrorAction SilentlyContinue
+# 注意：不复制 config.json —— 它含用户数据库密码等敏感配置，且只应在首次运行配置工具时于目标机生成
 Copy-Item $stagedBunExecutable (Join-Path $releaseBunDirectory "bun.exe")
 
 foreach ($directoryName in @(".output", "generated", "node_modules", "prisma", "scripts")) {
