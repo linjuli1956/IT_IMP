@@ -1,7 +1,7 @@
 /**
- * 阶段0设计稿截图：design/ledger-workspace + design/service-workspace
+ * 阶段0设计稿截图：design/ledger-workspace + design/service-workspace + design/network-topology
  * 双视口：1366×768 与 1440×1024
- * 覆盖：各 tab 列表态 + 电子秤校准工作台 + 详情抽屉态（含敏感字段）
+ * 覆盖：各 tab 列表态 + 电子秤校准工作台 + 详情抽屉态（含敏感字段）+ 拓扑图正常/空态/门店筛选/节点点击
  * Playwright headless，含关键元素校验
  */
 const { chromium } = require('playwright');
@@ -52,7 +52,9 @@ async function shot(page, name, label) {
       document.querySelector('.el-table') ||
       document.querySelector('.el-tabs') ||
       document.querySelector('.service-card') ||
-      document.querySelector('.calib-workbench')
+      document.querySelector('.calib-workbench') ||
+      document.querySelector('.topology-chart') ||
+      document.querySelector('.network-topology')
     );
   });
   if (!hasKey) {
@@ -156,6 +158,54 @@ async function runViewport(vp) {
     await step(results, `service-${vp.label}-drawer-domain.png`, `[${vp.label}] 域名详情抽屉（敏感字段）`,
       () => shot(page, `service-${vp.label}-drawer-domain.png`, `[${vp.label}] 域名详情抽屉（敏感字段）`));
     await closeDrawer(page);
+
+    // ===== 网络拓扑 network-topology =====
+    await page.goto(`${BASE}/design/network-topology`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500); // ECharts force 布局需更多时间稳定
+
+    // 正常态（有连线，力导向图）
+    await step(results, `network-topology-${vp.label}-normal.png`, `[${vp.label}] 网络拓扑正常态（有连线）`,
+      () => shot(page, `network-topology-${vp.label}-normal.png`, `[${vp.label}] 网络拓扑正常态`));
+
+    // 空态（无连线）
+    const emptyBtn = page.locator('button:has-text("模拟空态")');
+    if (await emptyBtn.isVisible().catch(() => false)) {
+      await emptyBtn.click();
+      await page.waitForTimeout(1000);
+      await step(results, `network-topology-${vp.label}-empty.png`, `[${vp.label}] 网络拓扑空态（无连线）`,
+        () => shot(page, `network-topology-${vp.label}-empty.png`, `[${vp.label}] 网络拓扑空态`));
+      // 恢复正常态
+      await page.locator('button:has-text("显示正常拓扑")').click();
+      await page.waitForTimeout(1500);
+    }
+
+    // 门店筛选态（选泰兴店，设备数减少）
+    const storeSelect = page.locator('.filter-bar .el-select').first();
+    await storeSelect.click();
+    await page.waitForTimeout(300);
+    await page.locator('.el-select-dropdown__item:has-text("泰兴店")').click();
+    await page.waitForTimeout(1500);
+    await step(results, `network-topology-${vp.label}-store-filter.png`, `[${vp.label}] 网络拓扑门店筛选（泰兴店）`,
+      () => shot(page, `network-topology-${vp.label}-store-filter.png`, `[${vp.label}] 网络拓扑门店筛选`));
+    // 清除门店筛选
+    await storeSelect.click();
+    await page.waitForTimeout(300);
+    await page.locator('.el-select-dropdown__item:has-text("总部")').click();
+    await page.waitForTimeout(1500);
+
+    // 节点点击 → 设备详情抽屉
+    const node = page.locator('canvas').first();
+    if (await node.isVisible().catch(() => false)) {
+      // ECharts canvas: 点击中心区域触发节点点击
+      const box = await node.boundingBox();
+      if (box) {
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(1500);
+        await step(results, `network-topology-${vp.label}-drawer.png`, `[${vp.label}] 设备详情抽屉（节点点击）`,
+          () => shot(page, `network-topology-${vp.label}-drawer.png`, `[${vp.label}] 设备详情抽屉`));
+        await closeDrawer(page);
+      }
+    }
   } finally {
     await ctx.close();
     await browser.close();
