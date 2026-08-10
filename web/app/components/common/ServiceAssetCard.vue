@@ -10,10 +10,12 @@
   <div
     class="service-card"
     :class="{ 'service-card--selected': isSelected }"
+    role="button"
     tabindex="0"
     :aria-label="`查看 ${title} 详情`"
     @click="emit('click')"
     @keydown.enter.prevent="emit('click')"
+    @keydown.space.prevent="emit('click')"
   >
     <!-- 顶栏：标题 + 更多菜单 -->
     <div class="service-card__head">
@@ -22,7 +24,7 @@
         <span v-if="subtitle" class="service-card__subtitle">{{ subtitle }}</span>
       </div>
       <el-dropdown v-if="canEdit" trigger="click" @command="onCommand">
-        <el-button class="service-card__more" text :aria-label="`更多操作 ${title}`" @click.stop>
+        <el-button class="service-card__more" text :aria-label="`更多操作 ${title}`" @click.stop @keydown.enter.stop @keydown.space.stop>
           <el-icon><MoreFilled /></el-icon>
         </el-button>
         <template #dropdown>

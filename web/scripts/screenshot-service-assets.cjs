@@ -111,8 +111,8 @@ async function runViewport(vp) {
     await login(page, '管理员');
     await page.goto(`${BASE}/it/domains`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
-    await step(results, `domains-${vp.label}-normal.png`, `[${vp.label}] 域名正常态（管理员）`,
-      () => shot(page, `domains-${vp.label}-normal.png`, `[${vp.label}] 域名正常态`));
+    await step(results, `domains-${vp.label}-normal.png`, `[${vp.label}] 域名卡片态（管理员）`,
+      () => shot(page, `domains-${vp.label}-normal.png`, `[${vp.label}] 域名卡片态`));
 
     // ===== 到期态（管理员，域名页含到期/过期标签的卡片） =====
     // Mock 数据已含 15天后到期(红)、已过期(红)、>90天(绿)，直接截图即可
@@ -129,11 +129,23 @@ async function runViewport(vp) {
       () => shot(page, `domains-${vp.label}-drawer.png`, `[${vp.label}] 域名详情抽屉`));
     await closeDrawer(page);
 
-    // ===== 小程序正常态（管理员） =====
+    // ===== 域名列表管理态（管理员，切换到列表视图） =====
+    await page.locator('.el-radio-button:has-text("列表管理")').click();
+    await page.waitForTimeout(1500);
+    await step(results, `domains-${vp.label}-list.png`, `[${vp.label}] 域名列表管理态（含批量操作）`,
+      () => shot(page, `domains-${vp.label}-list.png`, `[${vp.label}] 域名列表管理态`));
+
+    // ===== 小程序正常态（管理员，卡片视图） =====
     await page.goto(`${BASE}/it/miniapps`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
-    await step(results, `miniapps-${vp.label}-normal.png`, `[${vp.label}] 小程序正常态（管理员）`,
-      () => shot(page, `miniapps-${vp.label}-normal.png`, `[${vp.label}] 小程序正常态`));
+    await step(results, `miniapps-${vp.label}-normal.png`, `[${vp.label}] 小程序卡片态（管理员）`,
+      () => shot(page, `miniapps-${vp.label}-normal.png`, `[${vp.label}] 小程序卡片态`));
+
+    // ===== 小程序列表管理态（管理员） =====
+    await page.locator('.el-radio-button:has-text("列表管理")').click();
+    await page.waitForTimeout(1500);
+    await step(results, `miniapps-${vp.label}-list.png`, `[${vp.label}] 小程序列表管理态（含批量操作）`,
+      () => shot(page, `miniapps-${vp.label}-list.png`, `[${vp.label}] 小程序列表管理态`));
 
     // ===== 查看者态（域名页，无编辑/删除按钮） =====
     // 重新登录为查看者

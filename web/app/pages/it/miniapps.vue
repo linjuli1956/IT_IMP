@@ -6,6 +6,10 @@
       :description="`管理各小程序的名称、绑定邮箱及密码。敏感信息默认脱敏显示。支持按名称/邮箱搜索。`"
     >
       <template #actions>
+        <el-radio-group v-model="viewMode" size="small" class="view-switcher">
+          <el-radio-button value="card">卡片总览</el-radio-button>
+          <el-radio-button value="list">列表管理</el-radio-button>
+        </el-radio-group>
         <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增小程序
@@ -29,14 +33,17 @@
       </el-col>
     </el-row>
 
-    <!-- 搜索栏 -->
+    <!-- 搜索+筛选栏（两种视图共享） -->
     <div class="card filter-bar">
-      <el-input v-model="filterKeyword" placeholder="搜索名称/邮箱/备注" clearable style="width: 360px" :prefix-icon="Search" />
+      <el-input v-model="filterKeyword" placeholder="搜索名称/邮箱/备注" clearable style="width: 320px" :prefix-icon="Search" />
+      <el-select v-model="filterStatus" placeholder="状态" clearable style="width: 110px">
+        <el-option v-for="s in miniappStatusOptions" :key="s" :label="s" :value="s" />
+      </el-select>
       <span class="filter-count">{{ filteredMiniapps.length }} 个结果</span>
     </div>
 
-    <!-- 卡片网格 -->
-    <div class="card" v-loading="loading">
+    <!-- 卡片视图 -->
+    <div v-if="viewMode === 'card'" class="card" v-loading="loading">
       <div class="card-grid" v-if="filteredMiniapps.length > 0">
         <ServiceAssetCard
           v-for="m in filteredMiniapps" :key="m.id"
@@ -45,6 +52,37 @@
           @click="openDrawer(m)" @edit="handleEdit(m)" @delete="handleDelete(m)"
         />
       </div>
+      <EmptyState v-else description="暂无小程序数据" />
+    </div>
+
+    <!-- 列表视图 -->
+    <div v-else class="card">
+      <CrudTable
+        v-if="filteredMiniapps.length > 0 || loading"
+        :columns="columns"
+        :data="filteredMiniapps"
+        :loading="loading"
+        :show-batch-copy="true"
+        :show-actions="canEdit"
+        @edit="handleEdit"
+        @delete="handleDelete"
+        @batch-delete="handleBatchDelete"
+        @batch-copy="handleBatchCopy"
+      >
+        <template #name="{ row }">
+          <RecordPreviewTooltip :title="row.name" :rows="buildMiniappPreviewRows(row)">
+            <template #reference>
+              <span class="miniapp-name" tabindex="0" :aria-label="`预览 ${row.name}`">{{ row.name }}</span>
+            </template>
+          </RecordPreviewTooltip>
+        </template>
+        <template #emailPassword="{ row }">
+          <SensitiveValue :value="row.emailPassword" />
+        </template>
+        <template #status="{ row }">
+          <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
+        </template>
+      </CrudTable>
       <EmptyState v-else description="暂无小程序数据" />
     </div>
 
@@ -101,11 +139,17 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Cellphone, CircleCheck, CircleClose, PieChart, Search } from '@element-plus/icons-vue'
 import { useMiniappData, type MiniappItem } from '~/composables/useMiniappData'
+import { buildMiniappPreviewRows } from '~/utils/preview-utils'
 import { getAssetStatusTagType } from '~/utils/asset-utils'
 import { getApiErrorMessage } from '~/composables/useApi'
 import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
 const { miniappList, loading, miniappStatusOptions, fetchMiniapps, addMiniapp, updateMiniapp, deleteMiniapp } = useMiniappData()
+
+// —— 视图模式切换：默认卡片总览 ——
+const viewMode = ref<'card' | 'list'>('card')
+
+const canEdit = ref(false)
 
 onMounted(() => {
   fetchMiniapps()
@@ -118,8 +162,6 @@ onMounted(() => {
     } catch { canEdit.value = false }
   }
 })
-
-const canEdit = ref(false)
 
 // —— CSS 变量颜色引用 ——
 const vars = {
@@ -137,14 +179,17 @@ const activeRate = computed(() => {
   return Math.round(activeCount.value / miniappList.value.length * 100) + '%'
 })
 
-// —— 搜索 ——
+// —— 搜索 + 筛选（两种视图共享）——
 const filterKeyword = ref('')
+const filterStatus = ref('')
+
 const filteredMiniapps = computed(() => {
-  if (!filterKeyword.value) return miniappList.value
   const kw = filterKeyword.value.toLowerCase()
   return miniappList.value.filter(m => {
     const haystack = [m.name, m.email, m.remark].filter(Boolean).join(' ').toLowerCase()
-    return haystack.includes(kw)
+    const hitKw = !kw || haystack.includes(kw)
+    const hitStatus = !filterStatus.value || m.status === filterStatus.value
+    return hitKw && hitStatus
   })
 })
 
@@ -154,10 +199,19 @@ function miniappTags(m: MiniappItem): ServiceTag[] {
 }
 function miniappFields(m: MiniappItem): ServiceField[] {
   return [
-    { label: '管理入口', value: '微信公众平台', link: true },
+    { label: '管理平台', value: '微信公众平台' },
     { label: '备注', value: m.remark || '—' },
   ]
 }
+
+// —— 列表视图列配置 ——
+const columns = [
+  { prop: 'name', label: '小程序名称', minWidth: 200, slot: 'name' },
+  { prop: 'email', label: '绑定邮箱', minWidth: 220 },
+  { prop: 'emailPassword', label: '邮箱密码', width: 200, slot: 'emailPassword' },
+  { prop: 'status', label: '状态', width: 90, align: 'center' as const, slot: 'status' },
+  { prop: 'remark', label: '备注', minWidth: 180 },
+]
 
 // —— 详情抽屉 ——
 const drawerVisible = ref(false)
@@ -245,6 +299,37 @@ async function handleDelete(row: MiniappItem) {
     }
   }
 }
+
+// —— 批量删除 ——
+async function handleBatchDelete(rows: MiniappItem[]) {
+  const ids = rows.map(r => r.id)
+  try {
+    for (const id of ids) {
+      await deleteMiniapp(id)
+    }
+    ElMessage.success(`已删除 ${ids.length} 项`)
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error))
+  }
+}
+
+// —— 批量复制（Tab 分隔，可粘贴 Excel，排除敏感字段）——
+function handleBatchCopy(rows: MiniappItem[]) {
+  if (rows.length === 0) {
+    ElMessage.warning('请先选择要复制的行')
+    return
+  }
+  const headers = ['小程序名称', '绑定邮箱', '状态', '备注']
+  const lines = rows.map(row => [
+    row.name, row.email, row.status, row.remark || '',
+  ].join('\t'))
+  const text = [headers.join('\t'), ...lines].join('\n')
+  navigator.clipboard.writeText(text).then(() => {
+    ElMessage.success(`已复制 ${rows.length} 行数据（可粘贴到Excel）`)
+  }).catch(() => {
+    ElMessage.error('复制失败，请重试')
+  })
+}
 </script>
 
 <style scoped>
@@ -253,4 +338,6 @@ async function handleDelete(row: MiniappItem) {
 .filter-count { margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-small); }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--spacing-card); }
 .drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
+.view-switcher { margin-right: 8px; }
+.miniapp-name { color: var(--color-primary); font-weight: 500; cursor: pointer; }
 </style>

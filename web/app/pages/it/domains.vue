@@ -6,6 +6,10 @@
       :description="`管理阿里云域名及其主账号凭证。记录 SSL 证书类型（DV/OV/EV）、颁发机构、到期日期。敏感信息默认脱敏显示。`"
     >
       <template #actions>
+        <el-radio-group v-model="viewMode" size="small" class="view-switcher">
+          <el-radio-button value="card">卡片总览</el-radio-button>
+          <el-radio-button value="list">列表管理</el-radio-button>
+        </el-radio-group>
         <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增域名
@@ -29,14 +33,20 @@
       </el-col>
     </el-row>
 
-    <!-- 搜索栏 -->
+    <!-- 搜索+筛选栏（两种视图共享） -->
     <div class="card filter-bar">
-      <el-input v-model="filterKeyword" placeholder="搜索域名/颁发机构/备注" clearable style="width: 360px" :prefix-icon="Search" />
+      <el-input v-model="filterKeyword" placeholder="搜索域名/账号/颁发机构/备注" clearable style="width: 320px" :prefix-icon="Search" />
+      <el-select v-model="filterCertType" placeholder="证书类型" clearable style="width: 130px">
+        <el-option v-for="c in certTypeOptions" :key="c.value" :label="c.label" :value="c.value" />
+      </el-select>
+      <el-select v-model="filterStatus" placeholder="状态" clearable style="width: 110px">
+        <el-option v-for="s in domainStatusOptions" :key="s" :label="s" :value="s" />
+      </el-select>
       <span class="filter-count">{{ filteredDomains.length }} 个结果</span>
     </div>
 
-    <!-- 卡片网格 -->
-    <div class="card" v-loading="loading">
+    <!-- 卡片视图 -->
+    <div v-if="viewMode === 'card'" class="card" v-loading="loading">
       <div class="card-grid" v-if="filteredDomains.length > 0">
         <ServiceAssetCard
           v-for="d in filteredDomains" :key="d.id"
@@ -45,6 +55,51 @@
           @click="openDrawer(d)" @edit="handleEdit(d)" @delete="handleDelete(d)"
         />
       </div>
+      <EmptyState v-else description="暂无域名数据" />
+    </div>
+
+    <!-- 列表视图 -->
+    <div v-else class="card">
+      <CrudTable
+        v-if="filteredDomains.length > 0 || loading"
+        :columns="columns"
+        :data="filteredDomains"
+        :loading="loading"
+        :show-batch-copy="true"
+        :show-actions="canEdit"
+        @edit="handleEdit"
+        @delete="handleDelete"
+        @batch-delete="handleBatchDelete"
+        @batch-copy="handleBatchCopy"
+      >
+        <template #domain="{ row }">
+          <RecordPreviewTooltip :title="row.domain" :rows="buildDomainPreviewRows(row)">
+            <template #reference>
+              <span class="domain-name" tabindex="0" :aria-label="`预览 ${row.domain}`">{{ row.domain }}</span>
+            </template>
+          </RecordPreviewTooltip>
+        </template>
+        <template #mainAccount="{ row }">
+          <SensitiveValue :value="row.mainAccount" />
+        </template>
+        <template #mainPassword="{ row }">
+          <SensitiveValue :value="row.mainPassword" />
+        </template>
+        <template #certType="{ row }">
+          <el-tag :type="(certTypeTagMap[row.certType] as any) || 'info'" size="small">{{ row.certType || '—' }}</el-tag>
+        </template>
+        <template #certExpireDate="{ row }">
+          <div class="expire-cell">
+            <span>{{ row.certExpireDate || '—' }}</span>
+            <el-tag v-if="row.certExpireDate" size="small" :type="expireTagType(row.certExpireDate)">
+              {{ expireLabel(row.certExpireDate) }}
+            </el-tag>
+          </div>
+        </template>
+        <template #status="{ row }">
+          <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
+        </template>
+      </CrudTable>
       <EmptyState v-else description="暂无域名数据" />
     </div>
 
@@ -140,11 +195,17 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Document, CircleCheck, WarningFilled, CircleClose, Search } from '@element-plus/icons-vue'
 import { useDomainData, certTypeOptions, certTypeTagMap, type DomainItem } from '~/composables/useDomainData'
+import { buildDomainPreviewRows } from '~/utils/preview-utils'
 import { getExpireInfo, getAssetStatusTagType } from '~/utils/asset-utils'
 import { getApiErrorMessage } from '~/composables/useApi'
 import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
 const { domainList, loading, domainStatusOptions, fetchDomains, addDomain, updateDomain, deleteDomain } = useDomainData()
+
+// —— 视图模式切换：默认卡片总览 ——
+const viewMode = ref<'card' | 'list'>('card')
+
+const canEdit = ref(false)
 
 onMounted(() => {
   fetchDomains()
@@ -157,8 +218,6 @@ onMounted(() => {
     } catch { canEdit.value = false }
   }
 })
-
-const canEdit = ref(false)
 
 // —— CSS 变量颜色引用 ——
 const vars = {
@@ -179,14 +238,21 @@ const expiredCount = computed(() => domainList.value.filter(d => {
   return e.days !== null && e.days < 0
 }).length)
 
-// —— 搜索 ——
+// —— 搜索 + 筛选（两种视图共享）——
+// 搜索含主账号，但主账号不进入卡片字段或 Hover
 const filterKeyword = ref('')
+const filterCertType = ref('')
+const filterStatus = ref('')
+
 const filteredDomains = computed(() => {
-  if (!filterKeyword.value) return domainList.value
   const kw = filterKeyword.value.toLowerCase()
   return domainList.value.filter(d => {
-    const haystack = [d.domain, d.certIssuer, d.remark].filter(Boolean).join(' ').toLowerCase()
-    return haystack.includes(kw)
+    // 搜索 haystack 包含主账号（可被搜索到），但不进入卡片字段
+    const haystack = [d.domain, d.mainAccount, d.certIssuer, d.remark].filter(Boolean).join(' ').toLowerCase()
+    const hitKw = !kw || haystack.includes(kw)
+    const hitType = !filterCertType.value || d.certType === filterCertType.value
+    const hitStatus = !filterStatus.value || d.status === filterStatus.value
+    return hitKw && hitType && hitStatus
   })
 })
 
@@ -219,10 +285,23 @@ function domainTags(d: DomainItem): ServiceTag[] {
 }
 function domainFields(d: DomainItem): ServiceField[] {
   return [
-    { label: '管理入口', value: '阿里云控制台', link: true },
+    { label: '管理平台', value: '阿里云' },
     { label: '备注', value: d.remark || '—' },
   ]
 }
+
+// —— 列表视图列配置（不含 row-class-name 整行底色）——
+const columns = [
+  { prop: 'domain', label: '域名', minWidth: 200, slot: 'domain' },
+  { prop: 'mainAccount', label: '主账号', width: 180, slot: 'mainAccount' },
+  { prop: 'mainPassword', label: '主账号密码', width: 180, slot: 'mainPassword' },
+  { prop: 'certType', label: '证书类型', width: 90, align: 'center' as const, slot: 'certType' },
+  { prop: 'certIssuer', label: '颁发机构', width: 140 },
+  { prop: 'certRenewDate', label: '更换日期', width: 120 },
+  { prop: 'certExpireDate', label: '到期日期', minWidth: 200, slot: 'certExpireDate' },
+  { prop: 'status', label: '状态', width: 90, align: 'center' as const, slot: 'status' },
+  { prop: 'remark', label: '备注', minWidth: 150 },
+]
 
 // —— 详情抽屉 ——
 const drawerVisible = ref(false)
@@ -318,6 +397,39 @@ async function handleDelete(row: DomainItem) {
     }
   }
 }
+
+// —— 批量删除 ——
+async function handleBatchDelete(rows: DomainItem[]) {
+  const ids = rows.map(r => r.id)
+  try {
+    for (const id of ids) {
+      await deleteDomain(id)
+    }
+    ElMessage.success(`已删除 ${ids.length} 项`)
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error))
+  }
+}
+
+// —— 批量复制（Tab 分隔，可粘贴 Excel，排除敏感字段）——
+function handleBatchCopy(rows: DomainItem[]) {
+  if (rows.length === 0) {
+    ElMessage.warning('请先选择要复制的行')
+    return
+  }
+  const headers = ['域名', '证书类型', '颁发机构', '更换日期', '到期日期', '状态', '备注']
+  const lines = rows.map(row => [
+    row.domain, row.certType || '', row.certIssuer || '',
+    row.certRenewDate || '', row.certExpireDate || '',
+    row.status, row.remark || '',
+  ].join('\t'))
+  const text = [headers.join('\t'), ...lines].join('\n')
+  navigator.clipboard.writeText(text).then(() => {
+    ElMessage.success(`已复制 ${rows.length} 行数据（可粘贴到Excel）`)
+  }).catch(() => {
+    ElMessage.error('复制失败，请重试')
+  })
+}
 </script>
 
 <style scoped>
@@ -326,4 +438,7 @@ async function handleDelete(row: DomainItem) {
 .filter-count { margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-small); }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--spacing-card); }
 .drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
+.view-switcher { margin-right: 8px; }
+.domain-name { color: var(--color-primary); font-weight: 500; cursor: pointer; }
+.expire-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 </style>
