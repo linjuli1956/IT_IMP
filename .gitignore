@@ -103,6 +103,9 @@ desktop/build/bin/bun/
 # ---- Docker 运行时数据与环境文件 ----
 deploy/docker/data/
 
+# ---- 截图（本地验收产物，不入仓库）----
+screenshots/network-topology-tab/
+
 # ---- AI 工具缓存 ----
 .qoder/
 .codex/

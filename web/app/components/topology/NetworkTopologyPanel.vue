@@ -16,6 +16,13 @@
       <span class="filter-count">{{ filteredTopoDevices.length }} 台设备 · {{ displayTopoLinks.length }} 条连线</span>
     </div>
 
+    <!-- 刷新失败提示（已有旧数据时，保留旧图表） -->
+    <div v-if="topoError && topoLoaded" class="refresh-error-banner card">
+      <el-icon color="var(--color-danger)"><WarningFilled /></el-icon>
+      <span>拓扑刷新失败，当前显示上次成功数据</span>
+      <el-button size="small" @click="fetchTopology">重试</el-button>
+    </div>
+
     <!-- 拓扑图 / 空态 -->
     <div class="card topology-card">
       <!-- 首次加载中 -->
@@ -25,7 +32,7 @@
       </div>
       <!-- 首次加载失败 -->
       <div v-else-if="topoError && !topoLoaded" class="chart-error">
-        <el-icon size="32" color="var(--color-danger, #F56C6C)"><WarningFilled /></el-icon>
+        <el-icon size="32" color="var(--color-danger)"><WarningFilled /></el-icon>
         <p>拓扑数据加载失败</p>
         <p v-if="topoError" class="error-detail">{{ topoError }}</p>
         <el-button size="small" @click="fetchTopology">重试</el-button>
@@ -345,6 +352,16 @@ function onChartClick(params: any) {
   gap: 8px;
   color: var(--text-placeholder);
   font-size: var(--font-size-small);
+}
+
+.refresh-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  margin-bottom: var(--spacing-card);
+  font-size: var(--font-size-small);
+  color: var(--color-danger);
 }
 
 .chart-error {

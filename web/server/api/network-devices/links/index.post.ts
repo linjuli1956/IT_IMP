@@ -82,10 +82,9 @@ export default defineEventHandler(async (event: H3Event) => {
           ? [sourceDeviceId, targetDeviceId]
           : [targetDeviceId, sourceDeviceId]
 
-        const [firstRows, secondRows] = await Promise.all([
-          tx.$queryRaw`SELECT id, storeId, brand, model, deviceType FROM network_devices WHERE id = ${firstId} FOR UPDATE`,
-          tx.$queryRaw`SELECT id, storeId, brand, model, deviceType FROM network_devices WHERE id = ${secondId} FOR UPDATE`,
-        ]) as [any[], any[]]
+        // 严格串行获取锁：先锁较小 ID，再锁较大 ID，保证 A→B 和 B→A 加锁顺序一致
+        const firstRows = await tx.$queryRaw`SELECT id, storeId, brand, model, deviceType FROM network_devices WHERE id = ${firstId} FOR UPDATE` as any[]
+        const secondRows = await tx.$queryRaw`SELECT id, storeId, brand, model, deviceType FROM network_devices WHERE id = ${secondId} FOR UPDATE` as any[]
 
         // 校验设备锁查询确实各返回一行；并发删除导致缺行时返回明确 404，不依赖后续 P2003
         if (firstRows.length === 0) {
