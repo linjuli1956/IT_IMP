@@ -4,6 +4,7 @@
   范式：不请求 API / 假数据 / 门店筛选真实生效 / 角色可切换 / 自然响应式。
   覆盖：核心交换机 / 接入交换机 / 路由器 / 防火墙 / AP / 停用 / 报废 / 未连线设备。
   技术选型：ECharts 6 graph（force layout），不引入 X6。
+  Mock 规则：source=上游、target=下游；禁止自连接；禁止同方向+反方向重复；第一版两端设备同门店；删除设备 Restrict（409）。
   冻结边界：不改 Prisma、API、it/network-devices.vue 正式页面。
 -->
 <template>
@@ -181,7 +182,9 @@ const mockDevices: any[] = [
   { id: 8, storeId: 1, storeName: '总部', deviceType: '交换机', manageType: '网管型', brand: 'H3C', model: 'S5120', serialNo: 'SN2025H3C008', managementIp: '192.168.1.5', macAddress: 'A1-B2-C3-D4-E5-F6', portCount: 24, uplinkPort: 'Gig0/1', firmwareVersion: 'V7', installLocation: '三楼弱电井', status: '正常', remark: '尚未配置连线' },
 ]
 
-// —— Mock 连线数据（核心→接入上联 / 核心→路由器 / 路由器→防火墙 / 核心→AP）——
+// —— Mock 连线数据 ——
+// 校验规则：source=上游、target=下游；无自连接；无同方向/反方向重复；两端设备同门店；删除设备 Restrict(409)
+// 全部连线两端均为 storeId=1（总部），符合第一版同门店约束
 const mockLinks: any[] = [
   { id: 1, sourceDeviceId: 1, sourcePort: 'Gig1/0/24', targetDeviceId: 2, targetPort: 'Gig0/1', linkType: '上联', remark: '核心→接入' },
   { id: 2, sourceDeviceId: 1, sourcePort: 'Gig1/0/1', targetDeviceId: 3, targetPort: 'GE0/0/1', linkType: '直连', remark: '核心→路由器' },
