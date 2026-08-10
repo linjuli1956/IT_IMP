@@ -625,11 +625,48 @@ model NetworkDevice {  /// 网络设备主键ID，自增
 
   /// 所属门店
   store           Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  /// 作为连接源（上游）的连线列表
+  outgoingLinks   NetworkDeviceLink[] @relation("LinkSource")
+  /// 作为连接目标（下游）的连线列表
+  incomingLinks   NetworkDeviceLink[] @relation("LinkTarget")
 
   @@index([storeId])
   @@index([deviceType])
   @@index([status])
   @@map("network_devices")
+}
+
+/// 网络设备连接关系表 — 记录设备间的物理/逻辑连接（source=上游 → target=下游）
+model NetworkDeviceLink {
+  /// 连接关系主键ID，自增
+  id              Int      @id @default(autoincrement())
+  /// 源设备ID（上游设备，外键→network_devices.id，删除限制 Restrict）
+  sourceDeviceId  Int
+  /// 源端口（如 GigabitEthernet1/0/1）
+  sourcePort      String   @db.VarChar(50) @default("")
+  /// 目标设备ID（下游设备，外键→network_devices.id，删除限制 Restrict）
+  targetDeviceId  Int
+  /// 目标端口
+  targetPort      String   @db.VarChar(50) @default("")
+  /// 连接类型：上联/级联/直连/其他
+  linkType        String   @db.VarChar(20) @default("直连")
+  /// 备注
+  remark          String   @db.VarChar(500) @default("")
+  /// 创建时间
+  createdAt       DateTime @default(now())
+  /// 最后更新时间
+  updatedAt       DateTime @updatedAt
+
+  /// 源设备（上游）
+  sourceDevice    NetworkDevice @relation("LinkSource", fields: [sourceDeviceId], references: [id], onDelete: Restrict)
+  /// 目标设备（下游）
+  targetDevice    NetworkDevice @relation("LinkTarget", fields: [targetDeviceId], references: [id], onDelete: Restrict)
+
+  /// 禁止同方向重复连接（sourceDeviceId + targetDeviceId + sourcePort + targetPort 唯一）
+  @@unique([sourceDeviceId, targetDeviceId, sourcePort, targetPort], name: "unique_device_link")
+  @@index([sourceDeviceId])
+  @@index([targetDeviceId])
+  @@map("network_device_links")
 }
 
 /// 固话表 — 门店/部门固话记录

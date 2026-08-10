@@ -14,8 +14,18 @@ export default defineEventHandler(async (event: H3Event) => {
   const id = parsePositiveSafeId(getRouterParam(event, 'id'))
 
   try {
-    // 交互式事务：删除后取真实对象写日志（完整设备名），日志失败整体回滚
+    // 交互式事务：先检查关联连线，再删除，写日志，失败整体回滚
     await prisma.$transaction(async (tx) => {
+      // 检查是否仍有关联连接关系（作为源或目标），有则返回明确 409
+      const linkCount = await tx.networkDeviceLink.count({
+        where: { OR: [{ sourceDeviceId: id }, { targetDeviceId: id }] },
+      })
+      if (linkCount > 0) {
+        throw createError({
+          statusCode: 409,
+          message: `该设备仍关联 ${linkCount} 条连接关系，请先删除相关连线后再删除设备`,
+        })
+      }
       const deleted = await tx.networkDevice.delete({ where: { id } })
       await tx.operationLog.create({
         data: {
