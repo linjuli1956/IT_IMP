@@ -38,8 +38,8 @@ describe('parseBudgetRows', () => {
       paymentMethod: '月缴费',
       remark: '测试',
     })
-    expect(rows[1].annualFee).toBe(0)
-    expect(rows[1].remark).toBe('')
+    expect(rows[1]!.annualFee).toBe(0)
+    expect(rows[1]!.remark).toBe('')
   })
 
   it('列顺序变化时仍能按列名正确映射（不依赖列序）', () => {
@@ -139,7 +139,7 @@ describe('parseBudgetRows', () => {
     const { rows, errors } = parseBudgetRows(buffer)
     expect(errors).toEqual([])
     expect(rows).toHaveLength(1)
-    expect(rows[0].storeName).toBe('门店A')
+    expect(rows[0]!.storeName).toBe('门店A')
   })
 
   it('默认费用范围填充：模板费用范围为空的导入时自动填充', () => {
@@ -151,8 +151,8 @@ describe('parseBudgetRows', () => {
     const { rows, errors } = parseBudgetRows(buffer, '2026-04~2027-03')
     expect(errors).toEqual([])
     expect(rows).toHaveLength(2)
-    expect(rows[0].feeRange).toBe('2026-04~2027-03') // 空 → 填充默认值
-    expect(rows[1].feeRange).toBe('2026-04~2026-12') // 已填写 → 以模板为准
+    expect(rows[0]!.feeRange).toBe('2026-04~2027-03') // 空 → 填充默认值
+    expect(rows[1]!.feeRange).toBe('2026-04~2026-12') // 已填写 → 以模板为准
   })
 
   it('不传默认费用范围时，空费用范围保持为空（全年有效）', () => {
@@ -161,7 +161,7 @@ describe('parseBudgetRows', () => {
       [2026, '门店A', '电信', '宽带', 100, 0, '', '', '', ''],
     ])
     const { rows } = parseBudgetRows(buffer)
-    expect(rows[0].feeRange).toBe('')
+    expect(rows[0]!.feeRange).toBe('')
   })
 
   it('非法月份（00/13/99）的费用范围被拒绝', () => {
@@ -184,7 +184,7 @@ describe('parseBudgetRows', () => {
     ])
     const { rows, errors } = parseBudgetRows(buffer)
     expect(errors).toEqual([])
-    expect(rows[0].feeRange).toBe('2026-01~2026-12')
+    expect(rows[0]!.feeRange).toBe('2026-01~2026-12')
   })
 })
 
@@ -207,7 +207,7 @@ describe('dedupeBudgetRows', () => {
     const existing = new Set(['2026|门店A|电信|宽带'])
     const { rows, skipped } = dedupeBudgetRows([row('门店A'), row('门店B')], existing)
     expect(rows).toHaveLength(1)
-    expect(rows[0].storeName).toBe('门店B')
+    expect(rows[0]!.storeName).toBe('门店B')
     expect(skipped).toBe(1)
   })
 

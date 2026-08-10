@@ -135,6 +135,21 @@ async function runViewport(vp) {
     await step(results, `domains-${vp.label}-list.png`, `[${vp.label}] 域名列表管理态（含批量操作）`,
       () => shot(page, `domains-${vp.label}-list.png`, `[${vp.label}] 域名列表管理态`));
 
+    // ===== 域名列表筛选态（管理员，选择颁发机构筛选） =====
+    const issuerSelect = page.locator('.filter-bar .el-select').nth(1); // 第二个 select = 颁发机构
+    await issuerSelect.click();
+    await page.waitForTimeout(300);
+    const firstIssuer = page.locator('.el-select-dropdown__item').filter({ visible: true }).first();
+    await firstIssuer.click();
+    await page.waitForTimeout(1000);
+    await step(results, `domains-${vp.label}-list-filter.png`, `[${vp.label}] 域名列表筛选态（颁发机构）`,
+      () => shot(page, `domains-${vp.label}-list-filter.png`, `[${vp.label}] 域名列表筛选态`));
+    // 清除筛选
+    await issuerSelect.click();
+    await page.waitForTimeout(300);
+    await page.locator('.el-select__clear').first().click().catch(() => {});
+    await page.waitForTimeout(500);
+
     // ===== 小程序正常态（管理员，卡片视图） =====
     await page.goto(`${BASE}/it/miniapps`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
@@ -158,6 +173,39 @@ async function runViewport(vp) {
     await page.waitForTimeout(2000);
     await step(results, `domains-${vp.label}-viewer.png`, `[${vp.label}] 域名查看者态（无编辑按钮）`,
       () => shot(page, `domains-${vp.label}-viewer.png`, `[${vp.label}] 域名查看者态`));
+
+    // ===== 查看者列表态（无批量删除按钮）+ DOM 断言 =====
+    await page.locator('.el-radio-button:has-text("列表管理")').click();
+    await page.waitForTimeout(1500);
+    // DOM 断言：查看者不能看到批量删除按钮
+    const batchDeleteBtn = page.locator('.batch-bar button:has-text("批量删除")');
+    const hasBatchDelete = await batchDeleteBtn.isVisible().catch(() => false);
+    console.log(`  [DOM断言] 查看者批量删除按钮存在: ${hasBatchDelete} (期望 false)`);
+    if (hasBatchDelete) {
+      results.push({ name: `domains-${vp.label}-viewer-list.png`, ok: false, reason: '查看者看到了批量删除按钮' });
+    }
+    await step(results, `domains-${vp.label}-viewer-list.png`, `[${vp.label}] 域名查看者列表态（无批量删除）`,
+      () => shot(page, `domains-${vp.label}-viewer-list.png`, `[${vp.label}] 域名查看者列表态`));
+
+    // ===== 操作员列表态 DOM 断言（操作员可看到批量删除） =====
+    await ctx.clearCookies();
+    await page.evaluate(() => {
+      localStorage.setItem('token', 'service-assets-mock-token');
+      localStorage.setItem('user_info', JSON.stringify({ id: 3, username: 'operator', name: '操作员', role: '操作员', status: '正常' }));
+    });
+    await page.goto(`${BASE}/it/domains`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+    await page.locator('.el-radio-button:has-text("列表管理")').click();
+    await page.waitForTimeout(1500);
+    // 选中第一行以触发批量操作栏
+    await page.locator('.el-table__body .el-checkbox').first().click().catch(() => {});
+    await page.waitForTimeout(500);
+    const opBatchDeleteBtn = page.locator('.batch-bar button:has-text("批量删除")');
+    const opHasBatchDelete = await opBatchDeleteBtn.isVisible().catch(() => false);
+    console.log(`  [DOM断言] 操作员批量删除按钮存在: ${opHasBatchDelete} (期望 true)`);
+    if (!opHasBatchDelete) {
+      results.push({ name: `_dom-assert-operator-${vp.label}.txt`, ok: false, reason: '操作员未看到批量删除按钮' });
+    }
   } finally {
     await ctx.close();
     await browser.close();

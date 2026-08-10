@@ -63,6 +63,7 @@
         :data="filteredMiniapps"
         :loading="loading"
         :show-batch-copy="true"
+        :show-batch-delete="canEdit"
         :show-actions="canEdit"
         @edit="handleEdit"
         @delete="handleDelete"

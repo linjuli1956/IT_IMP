@@ -9,7 +9,7 @@
       <el-button v-if="showBatchCopy" size="small" type="success" @click="handleBatchCopy">
         批量复制
       </el-button>
-      <el-button size="small" type="danger" @click="handleBatchDelete">
+      <el-button v-if="showBatchDelete" size="small" type="danger" @click="handleBatchDelete">
         批量删除
       </el-button>
       <el-button size="small" @click="clearSelection">取消选择</el-button>
@@ -92,6 +92,7 @@ interface Props {
   showSelection?: boolean
   showBatchPrint?: boolean
   showBatchCopy?: boolean
+  showBatchDelete?: boolean
   total?: number
   actionWidth?: number
   rowClassName?: string | ((data: { row: any; rowIndex: number }) => string)
@@ -105,6 +106,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSelection: true,
   showBatchPrint: false,
   showBatchCopy: false,
+  showBatchDelete: true,
   total: 0,
   actionWidth: 240,
   stripe: true,

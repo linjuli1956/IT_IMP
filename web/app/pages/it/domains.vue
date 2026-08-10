@@ -39,6 +39,9 @@
       <el-select v-model="filterCertType" placeholder="证书类型" clearable style="width: 130px">
         <el-option v-for="c in certTypeOptions" :key="c.value" :label="c.label" :value="c.value" />
       </el-select>
+      <el-select v-model="filterIssuer" placeholder="颁发机构" clearable style="width: 150px">
+        <el-option v-for="i in issuerOptions" :key="i" :label="i" :value="i" />
+      </el-select>
       <el-select v-model="filterStatus" placeholder="状态" clearable style="width: 110px">
         <el-option v-for="s in domainStatusOptions" :key="s" :label="s" :value="s" />
       </el-select>
@@ -66,6 +69,7 @@
         :data="filteredDomains"
         :loading="loading"
         :show-batch-copy="true"
+        :show-batch-delete="canEdit"
         :show-actions="canEdit"
         @edit="handleEdit"
         @delete="handleDelete"
@@ -242,7 +246,15 @@ const expiredCount = computed(() => domainList.value.filter(d => {
 // 搜索含主账号，但主账号不进入卡片字段或 Hover
 const filterKeyword = ref('')
 const filterCertType = ref('')
+const filterIssuer = ref('')
 const filterStatus = ref('')
+
+// 颁发机构选项：由 domainList 去重生成
+const issuerOptions = computed(() => {
+  const set = new Set<string>()
+  domainList.value.forEach(d => { if (d.certIssuer) set.add(d.certIssuer) })
+  return Array.from(set).sort()
+})
 
 const filteredDomains = computed(() => {
   const kw = filterKeyword.value.toLowerCase()
@@ -251,8 +263,9 @@ const filteredDomains = computed(() => {
     const haystack = [d.domain, d.mainAccount, d.certIssuer, d.remark].filter(Boolean).join(' ').toLowerCase()
     const hitKw = !kw || haystack.includes(kw)
     const hitType = !filterCertType.value || d.certType === filterCertType.value
+    const hitIssuer = !filterIssuer.value || d.certIssuer === filterIssuer.value
     const hitStatus = !filterStatus.value || d.status === filterStatus.value
-    return hitKw && hitType && hitStatus
+    return hitKw && hitType && hitIssuer && hitStatus
   })
 })
 
