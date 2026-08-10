@@ -4,7 +4,7 @@
  * 删除所有 e2e_topology_demo 前缀的演示门店、设备、连线。
  * 严格按 连线 → 设备 → 门店 顺序删除，失败必须报错。
  *
- * ⚠ 只能对独立测试库执行，禁止对生产库运行。
+ * 仅限用户明确授权的验收数据库执行，禁止对生产库运行。
  *
  * 用法：
  *   BASE_URL=http://127.0.0.1:3999 CONFIRM_TEST_DB=YES node scripts/clean-topology-demo.cjs
@@ -73,11 +73,12 @@ async function main() {
     l.remark?.startsWith(DEMO_PREFIX)
   );
 
-  // 2. 查询所有门店，找出演示门店
+  // 2. 查询所有门店，找出演示门店（兼容 Store[] / { list } / { data } 三种返回格式）
   const storesResp = await fetch(`${BASE_URL}/api/stores`, { headers });
   await assertOk(storesResp, '查询门店');
   const storesData = await storesResp.json();
-  const demoStores = (storesData.data || []).filter(s => s.name?.startsWith(DEMO_PREFIX));
+  const stores = Array.isArray(storesData) ? storesData : (storesData.list || storesData.data || []);
+  const demoStores = stores.filter(s => s.name?.startsWith(DEMO_PREFIX));
 
   console.log(`  演示设备: ${demoDevices.length} 台`);
   console.log(`  演示连线: ${demoLinks.length} 条`);
@@ -98,7 +99,7 @@ async function main() {
       errors.push(`删除连线 ${link.id} 异常: ${e.message}`);
     }
   }
-  console.log(`    已删除 ${demoLinks.length} 条连线`);
+  console.log(`    已处理 ${demoLinks.length} 条连线`);
 
   // 4. 删除设备
   console.log(`  [2/3] 删除设备...`);
