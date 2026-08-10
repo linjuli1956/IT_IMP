@@ -99,7 +99,7 @@
 import { ElMessage } from 'element-plus'
 import { InfoFilled, Search, Document, CircleCheck, WarningFilled, CircleClose, Cellphone, PieChart } from '@element-plus/icons-vue'
 import { getExpireInfo, getAssetStatusTagType } from '~/utils/asset-utils'
-import type { ServiceTag, ServiceField } from '~/components/design/ServiceAssetCard.vue'
+import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
 // —— 角色切换 ——
 const currentRole = ref<'admin' | 'viewer'>('admin')

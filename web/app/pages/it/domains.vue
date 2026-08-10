@@ -3,10 +3,10 @@
     <PageHeader
       title="域名管理"
       subtitle="域名与 SSL 证书台账"
-      :description="`管理阿里云域名及其主账号凭证。记录 SSL 证书类型（DV/OV/EV）、颁发机构、到期日期。敏感信息默认脱敏显示。证书到期提醒：30 天标橙、7 天标红。`"
+      :description="`管理阿里云域名及其主账号凭证。记录 SSL 证书类型（DV/OV/EV）、颁发机构、到期日期。敏感信息默认脱敏显示。`"
     >
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增域名
         </el-button>
@@ -31,54 +31,49 @@
 
     <!-- 搜索栏 -->
     <div class="card filter-bar">
-      <el-input v-model="filterKeyword" placeholder="搜索域名/账号/颁发机构/备注" clearable style="width: 360px" />
+      <el-input v-model="filterKeyword" placeholder="搜索域名/颁发机构/备注" clearable style="width: 360px" :prefix-icon="Search" />
+      <span class="filter-count">{{ filteredDomains.length }} 个结果</span>
     </div>
 
-    <!-- 表格 -->
-    <div class="card">
-      <CrudTable
-        v-if="filteredDomains.length > 0 || loading"
-        :columns="columns"
-        :data="filteredDomains"
-        :loading="loading"
-        :stripe="false"
-        :row-class-name="getDomainRowClass"
-        :show-batch-copy="true"
-        @edit="handleEdit"
-        @delete="handleDelete"
-        @batch-delete="handleBatchDelete"
-        @batch-copy="handleBatchCopy"
-      >
-        <template #mainAccount="{ row }">
-          <SensitiveValue :value="row.mainAccount" />
-        </template>
-        <template #mainPassword="{ row }">
-          <SensitiveValue :value="row.mainPassword" />
-        </template>
-        <template #domain="{ row }">
-          <RecordPreviewTooltip :title="row.domain" :rows="buildDomainPreviewRows(row)">
-            <template #reference>
-              <span class="domain-name" tabindex="0" :aria-label="`预览 ${row.domain}`">{{ row.domain }}</span>
-            </template>
-          </RecordPreviewTooltip>
-        </template>
-        <template #certType="{ row }">
-          <el-tag :type="(certTypeTagMap[row.certType] as any) || 'info'" size="small">{{ row.certType || '—' }}</el-tag>
-        </template>
-        <template #certExpireDate="{ row }">
-          <div class="expire-cell">
-            <span class="expire-date">{{ row.certExpireDate || '—' }}</span>
-            <el-tag v-if="row.certExpireDate" size="small" :type="getExpireTagType(row.certExpireDate)">
-              {{ getExpireLabel(row.certExpireDate) }}
-            </el-tag>
-          </div>
-        </template>
-        <template #status="{ row }">
-          <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
-        </template>
-      </CrudTable>
+    <!-- 卡片网格 -->
+    <div class="card" v-loading="loading">
+      <div class="card-grid" v-if="filteredDomains.length > 0">
+        <ServiceAssetCard
+          v-for="d in filteredDomains" :key="d.id"
+          :title="d.domain" :subtitle="d.certIssuer || '服务商未填'"
+          :tags="domainTags(d)" :fields="domainFields(d)" :can-edit="canEdit"
+          @click="openDrawer(d)" @edit="handleEdit(d)" @delete="handleDelete(d)"
+        />
+      </div>
       <EmptyState v-else description="暂无域名数据" />
     </div>
+
+    <!-- 详情抽屉（敏感字段按需显示） -->
+    <AssetDetailDrawer v-model="drawerVisible" :title="currentRow?.domain || '详情'" :can-edit="canEdit">
+      <template #header>
+        <span class="drawer-id">{{ currentRow?.certIssuer || '服务商未填' }}</span>
+        <el-tag :type="getAssetStatusTagType(currentRow?.status || '')" size="small">{{ currentRow?.status }}</el-tag>
+        <el-tag v-if="currentRow?.certExpireDate" size="small" :type="expireTagType(currentRow.certExpireDate)">
+          {{ expireLabel(currentRow.certExpireDate) }}
+        </el-tag>
+      </template>
+      <el-descriptions v-if="currentRow" :column="2" border size="small">
+        <el-descriptions-item label="域名">{{ currentRow.domain }}</el-descriptions-item>
+        <el-descriptions-item label="服务商">{{ currentRow.certIssuer || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="证书类型">{{ currentRow.certType || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ currentRow.status }}</el-descriptions-item>
+        <el-descriptions-item label="更换日期">{{ currentRow.certRenewDate || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="到期日期">{{ currentRow.certExpireDate || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="主账号"><SensitiveValue :value="currentRow.mainAccount" /></el-descriptions-item>
+        <el-descriptions-item label="主账号密码"><SensitiveValue :value="currentRow.mainPassword" /></el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">{{ currentRow.remark || '—' }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="drawerVisible = false">关闭</el-button>
+        <el-button v-if="canEdit" type="primary" @click="handleEditFromDrawer">编辑</el-button>
+        <el-button v-if="canEdit" type="danger" @click="handleDeleteFromDrawer">删除</el-button>
+      </template>
+    </AssetDetailDrawer>
 
     <!-- 新增/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="560px" destroy-on-close>
@@ -143,114 +138,122 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Document, CircleCheck, WarningFilled, CircleClose } from '@element-plus/icons-vue'
+import { Plus, Document, CircleCheck, WarningFilled, CircleClose, Search } from '@element-plus/icons-vue'
 import { useDomainData, certTypeOptions, certTypeTagMap, type DomainItem } from '~/composables/useDomainData'
-import { buildDomainPreviewRows } from '~/utils/preview-utils'
-import { getExpireInfo } from '~/utils/asset-utils'
-import { getContractStatus, getDaysLeft } from '~/composables/useContractData'
+import { getExpireInfo, getAssetStatusTagType } from '~/utils/asset-utils'
 import { getApiErrorMessage } from '~/composables/useApi'
+import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
 const { domainList, loading, domainStatusOptions, fetchDomains, addDomain, updateDomain, deleteDomain } = useDomainData()
 
 onMounted(() => {
   fetchDomains()
+  // 权限：从 localStorage 获取角色，管理员/操作员可编辑
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
 })
+
+const canEdit = ref(false)
 
 // —— CSS 变量颜色引用 ——
 const vars = {
-  primary: 'var(--color-primary)',
-  primaryLight: 'var(--color-primary-light)',
-  success: 'var(--color-success)',
-  successLight: 'var(--color-success-light)',
-  warning: 'var(--color-warning)',
-  warningLight: 'var(--color-warning-light)',
-  danger: 'var(--color-danger)',
-  dangerLight: 'var(--color-danger-light)',
+  primary: 'var(--color-primary)', primaryLight: 'var(--color-primary-light)',
+  success: 'var(--color-success)', successLight: 'var(--color-success-light)',
+  warning: 'var(--color-warning)', warningLight: 'var(--color-warning-light)',
+  danger: 'var(--color-danger)', dangerLight: 'var(--color-danger-light)',
 }
 
 // —— 概览统计 ——
 const activeCount = computed(() => domainList.value.filter(d => d.status === '正常').length)
 const expiringCount = computed(() => domainList.value.filter(d => {
-  if (!d.certExpireDate) return false
-  const days = getDaysLeft(d.certExpireDate)
-  return days !== null && days > 0 && days <= 30
+  const e = getExpireInfo(d.certExpireDate)
+  return e.days !== null && e.days > 0 && e.days <= 30
 }).length)
 const expiredCount = computed(() => domainList.value.filter(d => {
-  if (!d.certExpireDate) return false
-  return getContractStatus(d.certExpireDate) === 'expired'
+  const e = getExpireInfo(d.certExpireDate)
+  return e.days !== null && e.days < 0
 }).length)
-
-// —— 列头筛选 ——
-const certTypeFilters = computed(() =>
-  [...new Set(domainList.value.map(d => d.certType).filter(Boolean))]
-    .map(v => ({ text: v, value: v }))
-)
-const certIssuerFilters = computed(() =>
-  [...new Set(domainList.value.map(d => d.certIssuer).filter(Boolean))]
-    .map(v => ({ text: v, value: v }))
-)
-const statusFilters = [
-  { text: '正常', value: '正常' },
-  { text: '停用', value: '停用' },
-]
-
-const columns = computed(() => [  { prop: 'domain', label: '域名', minWidth: 200, slot: 'domain' },
-  { prop: 'mainAccount', label: '主账号', width: 180, slot: 'mainAccount' },
-  { prop: 'mainPassword', label: '主账号密码', width: 180, slot: 'mainPassword' },
-  { prop: 'certType', label: '证书类型', width: 90, align: 'center' as const, slot: 'certType', filters: certTypeFilters.value, filterMethod: (v: any, r: any) => r.certType === v },
-  { prop: 'certIssuer', label: '颁发机构', width: 140, filters: certIssuerFilters.value, filterMethod: (v: any, r: any) => r.certIssuer === v },
-  { prop: 'certRenewDate', label: '更换日期', width: 120 },
-  { prop: 'certExpireDate', label: '到期日期', minWidth: 200, slot: 'certExpireDate' },
-  { prop: 'status', label: '状态', width: 90, align: 'center' as const, slot: 'status', filters: statusFilters, filterMethod: (v: any, r: any) => r.status === v },
-  { prop: 'remark', label: '备注', minWidth: 150 },
-])
-
-// —— 证书到期提醒（复用合同管理逻辑）——
-function getExpireTagType(expireDate: string) {
-  const status = getContractStatus(expireDate)
-  if (status === 'expired') return 'danger'
-  if (status === 'expiring') return 'warning'
-  return 'success'
-}
-
-function getExpireLabel(expireDate: string) {
-  const status = getContractStatus(expireDate)
-  if (status === 'expired') return '已过期'
-  const days = getDaysLeft(expireDate)
-  if (status === 'expiring') return `${days}天后到期`
-  return '有效'
-}
 
 // —— 搜索 ——
 const filterKeyword = ref('')
-
 const filteredDomains = computed(() => {
   if (!filterKeyword.value) return domainList.value
   const kw = filterKeyword.value.toLowerCase()
   return domainList.value.filter(d => {
-    const haystack = [d.domain, d.mainAccount, d.certIssuer, d.remark]
-      .filter(Boolean).join(' ').toLowerCase()
+    const haystack = [d.domain, d.certIssuer, d.remark].filter(Boolean).join(' ').toLowerCase()
     return haystack.includes(kw)
   })
 })
 
-// —— 弹窗 ——
+// —— 卡片 Tag / Field 构造 ——
+function certTagType(t: string | null): ServiceTag['type'] {
+  if (t === 'EV') return 'success'
+  if (t === 'OV') return 'warning'
+  if (t === 'DV') return 'info'
+  return 'info'
+}
+function expireTagType(date: string): ServiceTag['type'] {
+  const t = getExpireInfo(date).tagType
+  if (t === 'danger') return 'danger'
+  if (t === 'warning') return 'warning'
+  return 'success'
+}
+function expireLabel(date: string): string {
+  const e = getExpireInfo(date)
+  if (e.days === null) return '—'
+  if (e.days < 0) return `已过期${Math.abs(e.days)}天`
+  if (e.days === 0) return '今天到期'
+  return `${e.days}天后到期`
+}
+function domainTags(d: DomainItem): ServiceTag[] {
+  return [
+    { label: d.certType || '无证书', type: certTagType(d.certType) },
+    { label: expireLabel(d.certExpireDate), type: expireTagType(d.certExpireDate) },
+    { label: d.status, type: d.status === '正常' ? 'success' : 'danger' },
+  ]
+}
+function domainFields(d: DomainItem): ServiceField[] {
+  return [
+    { label: '管理入口', value: '阿里云控制台', link: true },
+    { label: '备注', value: d.remark || '—' },
+  ]
+}
+
+// —— 详情抽屉 ——
+const drawerVisible = ref(false)
+const currentRow = ref<DomainItem | null>(null)
+function openDrawer(row: DomainItem) {
+  currentRow.value = row
+  drawerVisible.value = true
+}
+function handleEditFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleEdit(currentRow.value)
+  }
+}
+function handleDeleteFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleDelete(currentRow.value)
+  }
+}
+
+// —— 新增/编辑弹窗 ——
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const saving = ref(false)
 const formRef = ref()
 
 const formData = reactive<DomainItem>({
-  id: 0,
-  domain: '',
-  mainAccount: '',
-  mainPassword: '',
-  certType: '',
-  certIssuer: '',
-  certRenewDate: '',
-  certExpireDate: '',
-  remark: '',
-  status: '正常',
+  id: 0, domain: '', mainAccount: '', mainPassword: '',
+  certType: '', certIssuer: '', certRenewDate: '', certExpireDate: '',
+  remark: '', status: '正常',
 })
 
 const rules = {
@@ -270,12 +273,9 @@ function handleAdd() {
   dialogVisible.value = true
 }
 
-
-
-function handleEdit(row: any) {
-  const d = row as DomainItem
+function handleEdit(row: DomainItem) {
   dialogTitle.value = '编辑域名'
-  Object.assign(formData, d)
+  Object.assign(formData, row)
   dialogVisible.value = true
 }
 
@@ -286,15 +286,10 @@ function handleSave() {
     try {
       if (formData.id === 0) {
         await addDomain({
-          domain: formData.domain,
-          mainAccount: formData.mainAccount,
-          mainPassword: formData.mainPassword,
-          certType: formData.certType,
-          certIssuer: formData.certIssuer,
-          certRenewDate: formData.certRenewDate,
-          certExpireDate: formData.certExpireDate,
-          remark: formData.remark,
-          status: formData.status,
+          domain: formData.domain, mainAccount: formData.mainAccount, mainPassword: formData.mainPassword,
+          certType: formData.certType, certIssuer: formData.certIssuer,
+          certRenewDate: formData.certRenewDate, certExpireDate: formData.certExpireDate,
+          remark: formData.remark, status: formData.status,
         })
         ElMessage.success('新增成功')
       } else {
@@ -310,13 +305,12 @@ function handleSave() {
   })
 }
 
-async function handleDelete(row: any) {
-  const d = row as DomainItem
+async function handleDelete(row: DomainItem) {
   try {
-    await ElMessageBox.confirm(`确定要删除域名"${d.domain}"吗？`, '提示', {
+    await ElMessageBox.confirm(`确定要删除域名"${row.domain}"吗？`, '提示', {
       confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning',
     })
-    await deleteDomain(d.id)
+    await deleteDomain(row.id)
     ElMessage.success('删除成功')
   } catch (error) {
     if (error !== 'cancel') {
@@ -324,69 +318,12 @@ async function handleDelete(row: any) {
     }
   }
 }
-
-async function handleBatchDelete(rows: any[]) {
-  const ids = (rows as DomainItem[]).map(r => r.id)
-  try {
-    for (const id of ids) {
-      await deleteDomain(id)
-    }
-    ElMessage.success(`已删除 ${ids.length} 项`)
-  } catch (error) {
-    ElMessage.error(getApiErrorMessage(error))
-  }
-}
-
-// —— 证书类型行底色 ——
-const certTypeBgMap: Record<string, string> = {
-  'DV': 'cert-type-dv',
-  'OV': 'cert-type-ov',
-  'EV': 'cert-type-ev',
-}
-function getDomainRowClass({ row }: { row: any }) {
-  return certTypeBgMap[row.certType] || 'cert-type-none'
-}
-
-// —— 批量复制（Tab分隔，可粘贴Excel，排除敏感字段）——
-function handleBatchCopy(rows: any[]) {
-  if (rows.length === 0) {
-    ElMessage.warning('请先选择要复制的行')
-    return
-  }
-  const headers = ['域名', '证书类型', '颁发机构', '更换日期', '到期日期', '状态', '备注']
-  const lines = (rows as DomainItem[]).map(row => [
-    row.domain, row.certType || '—', row.certIssuer || '—',
-    row.certRenewDate || '—', row.certExpireDate || '—',
-    row.status, row.remark || '',
-  ].join('\t'))
-  const text = [headers.join('\t'), ...lines].join('\n')
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success(`已复制 ${rows.length} 行数据（可粘贴到Excel）`)
-  }).catch(() => {
-    ElMessage.error('复制失败，请重试')
-  })
-}
 </script>
 
 <style scoped>
-.expire-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.expire-date {
-  flex-shrink: 0;
-}
-
-/* 证书类型行底色 */
-:deep(.cert-type-dv > td) { background: var(--cert-type-dv-bg) !important; }
-:deep(.cert-type-ov > td) { background: var(--cert-type-ov-bg) !important; }
-:deep(.cert-type-ev > td) { background: var(--cert-type-ev-bg) !important; }
-:deep(.cert-type-none > td) { background: var(--cert-type-none-bg) !important; }
-:deep(.cert-type-dv:hover > td) { background: var(--cert-type-dv-hover) !important; }
-:deep(.cert-type-ov:hover > td) { background: var(--cert-type-ov-hover) !important; }
-:deep(.cert-type-ev:hover > td) { background: var(--cert-type-ev-hover) !important; }
-:deep(.cert-type-none:hover > td) { background: var(--cert-type-none-hover) !important; }
+.stat-row { margin-bottom: var(--spacing-card); }
+.filter-bar { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-card); }
+.filter-count { margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-small); }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--spacing-card); }
+.drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
 </style>

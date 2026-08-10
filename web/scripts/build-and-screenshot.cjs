@@ -160,19 +160,24 @@ async function main() {
     process.exit(1);
   }
 
-  // 运行截图脚本
-  log('运行截图脚本...');
+  // 运行截图脚本（可指定 --screenshots=design,service 或默认全部）
+  const shotArg = process.argv.find(a => a.startsWith('--screenshots='));
+  const scripts = shotArg
+    ? shotArg.split('=')[1].split(',').map(s => `scripts/screenshot-${s}.cjs`)
+    : ['scripts/screenshot-design-stage.cjs', 'scripts/screenshot-service-assets.cjs'];
+
   let screenshotOk = true;
   try {
-    execSync('node scripts/screenshot-design-stage.cjs', {
-      cwd: WEB_DIR,
-      stdio: 'inherit',
-      timeout: 300000,
-    });
-    log('截图完成');
-  } catch (err) {
-    log(`截图脚本异常: ${err.message}`);
-    screenshotOk = false;
+    for (const script of scripts) {
+      log(`运行 ${script}...`);
+      try {
+        execSync(`node ${script}`, { cwd: WEB_DIR, stdio: 'inherit', timeout: 300000 });
+        log(`${script} 完成`);
+      } catch (err) {
+        log(`${script} 异常: ${err.message}`);
+        screenshotOk = false;
+      }
+    }
   } finally {
     server.kill();
     log('server 已停止');
