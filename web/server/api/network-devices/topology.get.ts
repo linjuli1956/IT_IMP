@@ -7,6 +7,7 @@
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole } from '../../utils/auth'
+import { parsePositiveSafeId } from '../../utils/request-validation'
 import { getQuery, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -15,13 +16,9 @@ export default defineEventHandler(async (event: H3Event) => {
   const query = getQuery(event)
   const where: Record<string, unknown> = {}
 
-  // 门店筛选（可选）
-  if (query.storeId) {
-    const storeId = Number(query.storeId)
-    if (!Number.isInteger(storeId) || storeId < 1) {
-      throw createError({ statusCode: 400, message: 'storeId 必须是不小于 1 的整数' })
-    }
-    where.storeId = storeId
+  // 门店筛选（可选）—— 使用项目统一正安全整数解析
+  if (query.storeId !== undefined && query.storeId !== null && query.storeId !== '') {
+    where.storeId = parsePositiveSafeId(query.storeId, '门店ID')
   }
 
   // 设备节点：含门店名称

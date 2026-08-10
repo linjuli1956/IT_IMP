@@ -1,5 +1,5 @@
 /**
- * 网络设备连接关系 DTO：字段白名单、严格校验、连接关系校验纯函数。
+ * 网络设备连接关系 DTO：字段白名单、严格类型校验、连接关系校验纯函数。
  * 供 network-devices/links API 统一使用。
  * 设计依据：docs/网络拓扑图设计方案.md §2.3
  */
@@ -21,7 +21,45 @@ export interface NetworkLinkFieldValidation {
   errors: string[]
 }
 
-/** 按白名单严格校验并清洗连接关系请求体（POST 共用） */
+/** 判断值是否为普通对象（排除 null、数组、Date 等非纯对象） */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === '[object Object]'
+  )
+}
+
+/** 判断值是否为合法正安全整数（排除布尔、字符串、小数、非安全整数） */
+function isPositiveSafeInteger(value: unknown): value is number {
+  if (typeof value === 'boolean') return false
+  if (typeof value === 'string') return false
+  if (typeof value !== 'number') return false
+  if (!Number.isSafeInteger(value)) return false
+  return value >= 1
+}
+
+/** 判断值是否为合法文本字段（排除对象、数组、布尔，只接受 string 或 number） */
+function isTextValue(value: unknown): value is string | number {
+  return typeof value === 'string' || typeof value === 'number'
+}
+
+/**
+ * 校验请求体是否为普通对象（入口守卫）。
+ * null、数组、基本类型直接拒绝。
+ */
+export function validateLinkBody(body: unknown): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
+  if (!isPlainObject(body)) {
+    return { ok: false, error: '请求体必须是 JSON 对象' }
+  }
+  return { ok: true, body }
+}
+
+/**
+ * 按白名单严格校验并清洗连接关系请求体（POST 共用）。
+ * 严格类型检查：布尔/对象/数组/空串/小数/非安全整数均被拒绝。
+ */
 export function validateNetworkLinkFields(body: Record<string, unknown>): NetworkLinkFieldValidation {
   const data: Record<string, unknown> = {}
   const errors: string[] = []
@@ -32,18 +70,26 @@ export function validateNetworkLinkFields(body: Record<string, unknown>): Networ
 
     switch (key) {
       case 'sourceDeviceId': {
-        const n = Number(value)
-        if (!Number.isSafeInteger(n) || n < 1) { errors.push('sourceDeviceId 必须是不小于 1 的整数'); break }
-        data[key] = n
+        if (!isPositiveSafeInteger(value)) {
+          errors.push('sourceDeviceId 必须是不小于 1 的安全整数（禁止布尔、对象、数组、空串、小数）')
+          break
+        }
+        data[key] = value
         break
       }
       case 'targetDeviceId': {
-        const n = Number(value)
-        if (!Number.isSafeInteger(n) || n < 1) { errors.push('targetDeviceId 必须是不小于 1 的整数'); break }
-        data[key] = n
+        if (!isPositiveSafeInteger(value)) {
+          errors.push('targetDeviceId 必须是不小于 1 的安全整数（禁止布尔、对象、数组、空串、小数）')
+          break
+        }
+        data[key] = value
         break
       }
       case 'linkType': {
+        if (!isTextValue(value)) {
+          errors.push('linkType 必须是字符串')
+          break
+        }
         const s = String(value).trim()
         if (!NETWORK_LINK_TYPES.includes(s as never)) {
           errors.push(`linkType 只允许 ${NETWORK_LINK_TYPES.join('/')}`)
@@ -53,7 +99,11 @@ export function validateNetworkLinkFields(body: Record<string, unknown>): Networ
         break
       }
       default: {
-        // 文本字段：trim 后空串保持空串（端口允许为空，非唯一字段）
+        // 文本字段：禁止对象、数组、布尔被 String() 静默转字符串
+        if (!isTextValue(value)) {
+          errors.push(`${key} 必须是字符串或数字（禁止对象、数组、布尔）`)
+          break
+        }
         data[key] = String(value).trim()
       }
     }
@@ -140,4 +190,22 @@ export function mapLinkApiError(error: unknown): { statusCode: number; message: 
     return { statusCode: 404, message: '连接关系不存在' }
   }
   return null
+}
+
+/**
+ * 判断错误是否为可重试的并发冲突（死锁/序列化失败/锁超时）。
+ * 纯函数，可单测。
+ */
+export function isRetryableConcurrencyError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code
+  const message = (error as { message?: string })?.message ?? ''
+  // Prisma 事务超时
+  if (code === 'P2028') return true
+  // MySQL 死锁 (ER_LOCK_DEADLOCK = 1213)
+  if (code === 'P2034' || message.includes('Deadlock') || message.includes('1213')) return true
+  // MySQL 锁等待超时 (ER_LOCK_WAIT_TIMEOUT = 1205)
+  if (message.includes('Lock wait timeout') || message.includes('1205')) return true
+  // MySQL 序列化失败
+  if (message.includes('Serialization failure') || message.includes('1213')) return true
+  return false
 }

@@ -92,6 +92,23 @@
   --spec-memory: #9b59b6;         /* 内存 - 紫 */
   --spec-disk: #13c2c2;           /* 磁盘 - 青绿 */
 
+  /* —— 网络拓扑设备类型色（ECharts canvas 渲染，需实际色值）—— */
+  --topo-type-switch: #409EFF;       /* 交换机 - 蓝 */
+  --topo-type-router: #E6A23C;      /* 路由器 - 橙 */
+  --topo-type-firewall: #F56C6C;    /* 防火墙 - 红 */
+  --topo-type-ap: #67C23A;          /* AP - 绿 */
+  --topo-type-other: #909399;       /* 其他 - 灰 */
+
+  /* —— 网络拓扑状态边框色（复用功能色）—— */
+  --topo-status-normal: #67C23A;    /* 正常 - 绿（同 --color-success）*/
+  --topo-status-stopped: #909399;   /* 停用 - 灰（同 --color-info）*/
+  --topo-status-scrapped: #F56C6C;  /* 报废 - 红（同 --color-danger）*/
+
+  /* —— 网络拓扑连线/文字色 —— */
+  --topo-edge-color: #C0C4CC;        /* 连线色 */
+  --topo-label-color: #303133;       /* 节点标签色 */
+  --topo-edge-label-color: #909399;  /* 边标签色 */
+
   /* —— 等宽字体（IP 地址、规格数值等）—— */
   --font-family-mono: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
 

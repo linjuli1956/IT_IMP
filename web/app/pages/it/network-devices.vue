@@ -13,7 +13,7 @@
       </template>
     </PageHeader>
 
-    <el-tabs v-model="activeTab" class="device-tabs" @tab-change="onTabChange">
+    <el-tabs v-model="activeTab" class="device-tabs">
       <!-- 台账列表 Tab（默认，保持既有 CRUD） -->
       <el-tab-pane label="台账列表" name="ledger">
         <div class="card filter-bar">
@@ -51,80 +51,15 @@
         </div>
       </el-tab-pane>
 
-      <!-- 网络拓扑 Tab -->
-      <el-tab-pane label="网络拓扑" name="topology">
-        <div class="quick-tip">
-          <el-icon><InfoFilled /></el-icon>
-          <span>力导向图自动排布 · 滚轮缩放 · 拖拽浏览 · 节点填充色=设备类型 · 边框色=设备状态 · 未配置连线显示空态</span>
-        </div>
-
-        <div class="card filter-bar">
-          <el-select v-model="topoStoreId" placeholder="按门店筛选" clearable style="width: 200px" @change="fetchTopology">
-            <el-option v-for="s in storeList" :key="s.id" :label="s.name" :value="s.id" />
-          </el-select>
-          <el-select v-model="topoDeviceType" placeholder="设备类型" clearable style="width: 140px">
-            <el-option v-for="t in networkDeviceTypeOptions" :key="t.value" :label="t.label" :value="t.value" />
-          </el-select>
-          <el-button :icon="Refresh" @click="fetchTopology" :loading="topoLoading">刷新</el-button>
-          <span class="filter-count">{{ filteredTopoDevices.length }} 台设备 · {{ displayTopoLinks.length }} 条连线</span>
-        </div>
-
-        <!-- 拓扑图 / 空态 -->
-        <div class="card topology-card">
-          <div v-if="topoLoading" class="chart-loading">
-            <el-icon size="32" color="var(--border-base)"><DataLine /></el-icon>
-            <p>拓扑图加载中...</p>
-          </div>
-          <EmptyState
-            v-else-if="displayTopoLinks.length === 0"
-            :icon="Connection"
-            description="尚未配置网络连接关系"
-          />
-          <ClientOnly v-else>
-            <v-chart
-              class="topology-chart"
-              :option="chartOption"
-              autoresize
-              @click="onChartClick"
-            />
-            <template #fallback>
-              <div class="chart-loading">
-                <el-icon size="32" color="var(--border-base)"><DataLine /></el-icon>
-                <p>拓扑图加载中...</p>
-              </div>
-            </template>
-          </ClientOnly>
-        </div>
-
-        <!-- 图例说明 -->
-        <div class="card legend-card">
-          <div class="legend-section">
-            <span class="legend-title">设备类型色</span>
-            <div class="legend-items">
-              <div v-for="c in typeColors" :key="c.type" class="legend-item">
-                <span class="legend-dot" :style="{ background: c.color }"></span>
-                <span>{{ c.type }}</span>
-              </div>
-            </div>
-          </div>
-          <div class="legend-section">
-            <span class="legend-title">状态边框</span>
-            <div class="legend-items">
-              <div class="legend-item">
-                <span class="legend-dot legend-border" style="border-color: #67C23A; background: transparent"></span>
-                <span>正常</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot legend-border" style="border-color: #909399; background: transparent; opacity: 0.5"></span>
-                <span>停用</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot legend-border" style="border-color: #F56C6C; background: transparent; opacity: 0.3"></span>
-                <span>报废</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- 网络拓扑 Tab（懒加载） -->
+      <el-tab-pane label="网络拓扑" name="topology" lazy>
+        <NetworkTopologyPanel
+          ref="topoPanelRef"
+          :can-edit="canEdit"
+          :store-list="storeListForTopo"
+          @node-click="onNodeClick"
+          @topology-loaded="onTopologyLoaded"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -154,7 +89,7 @@
       <div v-if="currentDevice" class="link-section">
         <div class="link-section-header">
           <span class="link-section-title">连接关系</span>
-          <el-button v-if="canEdit" type="primary" size="small" @click="openLinkDialog">
+          <el-button v-if="canEdit" type="primary" size="small" @click="linkDialogVisible = true">
             <el-icon><Plus /></el-icon> 新增连线
           </el-button>
         </div>
@@ -187,57 +122,20 @@
       </template>
     </AssetDetailDrawer>
 
-    <!-- 新增连线 Dialog -->
-    <el-dialog v-model="linkDialogVisible" title="新增连线" width="500px" :destroy-on-close="true">
-      <el-form :model="linkForm" label-width="90px" size="default">
-        <el-form-item label="当前设备">
-          <span>{{ linkForm.sourceName }}</span>
-        </el-form-item>
-        <el-form-item label="目标设备" required>
-          <el-select v-model="linkForm.targetDeviceId" placeholder="选择同门店设备" filterable style="width: 100%">
-            <el-option
-              v-for="d in linkTargetOptions"
-              :key="d.id"
-              :label="d.label"
-              :value="d.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="源端口">
-          <el-input v-model="linkForm.sourcePort" placeholder="如 Gig1/0/1（可选）" />
-        </el-form-item>
-        <el-form-item label="目标端口">
-          <el-input v-model="linkForm.targetPort" placeholder="如 Gig0/1（可选）" />
-        </el-form-item>
-        <el-form-item label="连接类型" required>
-          <el-select v-model="linkForm.linkType" style="width: 100%">
-            <el-option v-for="t in linkTypeOptions" :key="t" :label="t" :value="t" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="linkForm.remark" placeholder="可选" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="linkDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="linkSaving" @click="handleAddLink">确定</el-button>
-      </template>
-    </el-dialog>
+    <!-- 新增连线 Dialog（子组件，Props down / Events up） -->
+    <NetworkLinkDialog
+      v-model="linkDialogVisible"
+      :source-device="currentDevice"
+      :devices="topoDevices"
+      :loading="linkSaving"
+      @submit="handleAddLink"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { GraphChart } from 'echarts/charts'
-import {
-  TooltipComponent,
-  LegendComponent,
-  ToolboxComponent,
-} from 'echarts/components'
-import VChart from 'vue-echarts'
+import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, InfoFilled, DataLine, Connection } from '@element-plus/icons-vue'
 import { useNetworkDeviceData, networkDeviceTypeOptions, networkManageTypeOptions } from '~/composables/useNetworkDeviceData'
 import { useStoreData } from '~/composables/useStoreData'
 import { useApi, getApiErrorMessage } from '~/composables/useApi'
@@ -248,25 +146,10 @@ import type { AssetColumn } from '~/components/asset/AssetTable.vue'
 import type { NetworkDeviceItem } from '~/types/network-device'
 import { applyDeviceFilterPatch, buildDeviceQuery, type DeviceFilters } from '~/utils/device-query'
 import { buildDevicePreviewRows } from '~/utils/preview-utils'
-
-// —— ECharts 模块注册 ——
-use([
-  CanvasRenderer,
-  GraphChart,
-  TooltipComponent,
-  LegendComponent,
-  ToolboxComponent,
-])
+import type NetworkTopologyPanel from '~/components/topology/NetworkTopologyPanel.vue'
 
 // —— Tab 切换 ——
 const activeTab = ref<'ledger' | 'topology'>('ledger')
-let topoLoaded = false
-
-function onTabChange(name: string | number) {
-  if (name === 'topology' && !topoLoaded) {
-    fetchTopology()
-  }
-}
 
 // —— 角色权限 ——
 const canEdit = ref(false)
@@ -292,6 +175,11 @@ const {
 const { storeList } = useStoreData()
 
 const filters = reactive<DeviceFilters>({})
+
+// 拓扑面板用的门店列表（简化为 id + name）
+const storeListForTopo = computed(() =>
+  storeList.value.map(s => ({ id: s.id, name: s.name }))
+)
 
 // —— 筛选配置 ——
 const storeIdOptions = computed<AssetFilterOption[]>(() => storeList.value.map(s => ({ label: s.name, value: s.id })))
@@ -396,196 +284,43 @@ async function handleDelete(row: NetworkDeviceItem) {
 }
 
 // =====================
-// 网络拓扑
+// 网络拓扑（事件编排）
 // =====================
 
-// —— 拓扑数据 ——
-interface TopologyLink {
-  id: number
-  sourceDeviceId: number
-  sourcePort: string
-  targetDeviceId: number
-  targetPort: string
-  linkType: string
-  remark: string
-}
+// —— 拓扑面板引用 ——
+const topoPanelRef = ref<InstanceType<typeof NetworkTopologyPanel> | null>(null)
 
+// —— 拓扑数据（由子组件 topology-loaded 事件回传） ——
 const topoDevices = ref<NetworkDeviceItem[]>([])
-const topoLinks = ref<TopologyLink[]>([])
-const topoLoading = ref(false)
-const topoError = ref('')
+const topoLinks = ref<{ id: number; sourceDeviceId: number; sourcePort: string; targetDeviceId: number; targetPort: string; linkType: string; remark: string }[]>([])
 
-// —— 拓扑筛选 ——
-const topoStoreId = ref<number | null>(null)
-const topoDeviceType = ref<string>('')
-
-// —— 设备类型色板 ——
-const typeColors = [
-  { type: '交换机', color: '#409EFF' },
-  { type: '路由器', color: '#E6A23C' },
-  { type: '防火墙', color: '#F56C6C' },
-  { type: 'AP', color: '#67C23A' },
-  { type: '其他', color: '#909399' },
-]
-const deviceTypes = ['交换机', '路由器', '防火墙', 'AP', '其他']
-
-// —— 连接类型选项 ——
-const linkTypeOptions = ['上联', '级联', '直连', '其他']
-
-function statusBorderColor(status: string): string {
-  if (status === '正常') return '#67C23A'
-  if (status === '报废') return '#F56C6C'
-  return '#909399'
-}
-function statusOpacity(status: string): number {
-  if (status === '正常') return 1
-  if (status === '停用') return 0.5
-  if (status === '报废') return 0.3
-  return 1
-}
-
-async function fetchTopology() {
-  topoLoading.value = true
-  topoError.value = ''
-  topoLoaded = true
-  try {
-    const { get } = useApi()
-    const query: Record<string, string | number> = {}
-    if (topoStoreId.value) query.storeId = topoStoreId.value
-    const data = await get<{ devices: NetworkDeviceItem[]; links: TopologyLink[] }>('/api/network-devices/topology', { query })
-    topoDevices.value = data.devices
-    topoLinks.value = data.links
-  } catch (e) {
-    topoError.value = getApiErrorMessage(e)
-    topoDevices.value = []
-    topoLinks.value = []
-  } finally {
-    topoLoading.value = false
-  }
-}
-
-// —— 筛选后设备 ——
-const filteredTopoDevices = computed(() => topoDevices.value.filter((d) => {
-  const type = !topoDeviceType.value || d.deviceType === topoDeviceType.value
-  return type
-}))
-
-// —— 筛选后连线（两端设备都在筛选结果中） ——
-const filteredTopoIds = computed(() => new Set(filteredTopoDevices.value.map(d => d.id)))
-const displayTopoLinks = computed(() => topoLinks.value.filter(
-  l => filteredTopoIds.value.has(l.sourceDeviceId) && filteredTopoIds.value.has(l.targetDeviceId),
-))
-
-// —— 设备名格式化 ——
-function topoDeviceName(d: NetworkDeviceItem): string {
-  const parts = [d.brand, d.model].filter(Boolean)
-  return parts.length ? parts.join(' ') : `未命名${d.deviceType}`
-}
-
-// —— ECharts 图表配置 ——
-const chartOption = computed(() => {
-  const devices = filteredTopoDevices.value
-  const links = displayTopoLinks.value
-
-  const categories = deviceTypes.map((t) => {
-    const c = typeColors.find((x) => x.type === t)
-    return { name: t, itemStyle: { color: c?.color || '#909399' } }
-  })
-
-  const nodes = devices.map((d) => {
-    const typeIdx = deviceTypes.indexOf(d.deviceType)
-    const borderColor = statusBorderColor(d.status)
-    const opacity = statusOpacity(d.status)
-    const symbolSize = d.remark?.includes('核心') ? 60 : 45
-    return {
-      id: String(d.id),
-      name: topoDeviceName(d),
-      category: typeIdx >= 0 ? typeIdx : 4,
-      symbolSize,
-      value: d.id,
-      itemStyle: { color: typeColors.find((c) => c.type === d.deviceType)?.color || '#909399', borderColor, borderWidth: 2, opacity },
-      label: { show: true, position: 'bottom', fontSize: 11, color: '#303133' },
-      deviceData: d,
-    }
-  })
-
-  const edges = links.map((l) => {
-    const sourceDevice = devices.find((d) => d.id === l.sourceDeviceId)
-    const targetDevice = devices.find((d) => d.id === l.targetDeviceId)
-    const portInfo = [l.sourcePort, l.targetPort].filter(Boolean).join(' → ')
-    return {
-      source: String(l.sourceDeviceId),
-      target: String(l.targetDeviceId),
-      value: l.linkType,
-      label: { show: true, formatter: l.linkType, fontSize: 10, color: '#909399' },
-      lineStyle: { color: '#C0C4CC', width: 2, curveness: 0.1 },
-      linkData: l,
-      portInfo,
-      sourceName: sourceDevice ? topoDeviceName(sourceDevice) : '',
-      targetName: targetDevice ? topoDeviceName(targetDevice) : '',
-    }
-  })
-
-  return {
-    tooltip: {
-      trigger: 'item',
-      formatter: (params: any) => {
-        if (params.dataType === 'node') {
-          const d = params.data?.deviceData
-          if (!d) return params.name
-          return [
-            `<b>${topoDeviceName(d)}</b>`,
-            `类型：${d.deviceType}`,
-            `管理IP：${d.managementIp || '—'}`,
-            `端口数：${d.portCount ?? '—'}`,
-            `状态：${d.status}`,
-            `位置：${d.installLocation || '—'}`,
-          ].join('<br/>')
-        }
-        if (params.dataType === 'edge') {
-          const l = params.data
-          return [
-            `<b>${l.value}</b>`,
-            `${l.sourceName} → ${l.targetName}`,
-            l.portInfo ? `端口：${l.portInfo}` : '',
-          ].filter(Boolean).join('<br/>')
-        }
-        return params.name
-      },
-    },
-    legend: [{ data: deviceTypes, bottom: 10, textStyle: { color: '#606266' } }],
-    toolbox: { show: true, right: 20, feature: { restore: { title: '还原' } } },
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      roam: true,
-      draggable: true,
-      label: { show: true },
-      edgeLabel: { show: true, fontSize: 10, color: '#909399' },
-      force: { repulsion: 300, edgeLength: [120, 200], gravity: 0.08, layoutAnimation: true },
-      emphasis: { focus: 'adjacency', lineStyle: { width: 4 }, label: { fontSize: 13, fontWeight: 'bold' } },
-      data: nodes,
-      links: edges,
-      categories,
-    }],
-  }
-})
-
-// —— 节点点击 → 设备详情抽屉 ——
+// —— 节点点击 → 打开抽屉 ——
 const drawerVisible = ref(false)
 const currentDevice = ref<NetworkDeviceItem | null>(null)
 
-function onChartClick(params: any) {
-  if (params.dataType === 'node') {
-    const d = params.data?.deviceData as NetworkDeviceItem | undefined
-    if (d) {
-      currentDevice.value = d
-      drawerVisible.value = true
-    }
+function onNodeClick(device: NetworkDeviceItem) {
+  currentDevice.value = device
+  drawerVisible.value = true
+}
+
+function onTopologyLoaded(devices: NetworkDeviceItem[], links: typeof topoLinks.value) {
+  topoDevices.value = devices
+  topoLinks.value = links
+  // 抽屉中的设备信息也刷新
+  if (currentDevice.value) {
+    const updated = devices.find(d => d.id === currentDevice.value!.id)
+    if (updated) currentDevice.value = updated
   }
 }
 
-const drawerTitle = computed(() => currentDevice.value ? topoDeviceName(currentDevice.value) : '设备详情')
+// —— 抽屉标题 ——
+const drawerTitle = computed(() => {
+  const d = currentDevice.value
+  if (!d) return '设备详情'
+  const parts = [d.brand, d.model].filter(Boolean)
+  return parts.length ? parts.join(' ') : `未命名${d.deviceType}`
+})
+
 const drawerHeaderLabel = computed(() => {
   if (!currentDevice.value) return ''
   const d = currentDevice.value
@@ -595,8 +330,9 @@ const drawerHeaderLabel = computed(() => {
 const drawerItems = computed<{ label: string; value: string; span?: number }[]>(() => {
   const d = currentDevice.value
   if (!d) return []
+  const name = [d.brand, d.model].filter(Boolean).join(' ') || `未命名${d.deviceType}`
   return [
-    { label: '名称', value: topoDeviceName(d) },
+    { label: '名称', value: name },
     { label: '门店', value: d.storeName || '—' },
     { label: '设备类型', value: d.deviceType },
     { label: '管理类型', value: d.manageType || '—' },
@@ -622,10 +358,12 @@ const deviceLinks = computed(() => {
   for (const l of topoLinks.value) {
     if (l.sourceDeviceId === d.id) {
       const peer = topoDevices.value.find((x) => x.id === l.targetDeviceId)
-      result.push({ id: l.id, direction: 'out', peerName: peer ? topoDeviceName(peer) : `#${l.targetDeviceId}`, selfPort: l.sourcePort, peerPort: l.targetPort, linkType: l.linkType, remark: l.remark })
+      const peerName = peer ? ([peer.brand, peer.model].filter(Boolean).join(' ') || `未命名${peer.deviceType}`) : `#${l.targetDeviceId}`
+      result.push({ id: l.id, direction: 'out', peerName, selfPort: l.sourcePort, peerPort: l.targetPort, linkType: l.linkType, remark: l.remark })
     } else if (l.targetDeviceId === d.id) {
       const peer = topoDevices.value.find((x) => x.id === l.sourceDeviceId)
-      result.push({ id: l.id, direction: 'in', peerName: peer ? topoDeviceName(peer) : `#${l.sourceDeviceId}`, selfPort: l.targetPort, peerPort: l.sourcePort, linkType: l.linkType, remark: l.remark })
+      const peerName = peer ? ([peer.brand, peer.model].filter(Boolean).join(' ') || `未命名${peer.deviceType}`) : `#${l.sourceDeviceId}`
+      result.push({ id: l.id, direction: 'in', peerName, selfPort: l.targetPort, peerPort: l.sourcePort, linkType: l.linkType, remark: l.remark })
     }
   }
   return result
@@ -634,57 +372,16 @@ const deviceLinks = computed(() => {
 // —— 新增连线 ——
 const linkDialogVisible = ref(false)
 const linkSaving = ref(false)
-const linkForm = reactive({
-  sourceDeviceId: 0,
-  sourceName: '',
-  targetDeviceId: null as number | null,
-  sourcePort: '',
-  targetPort: '',
-  linkType: '直连',
-  remark: '',
-})
 
-function openLinkDialog() {
-  const d = currentDevice.value
-  if (!d) return
-  linkForm.sourceDeviceId = d.id
-  linkForm.sourceName = topoDeviceName(d)
-  linkForm.targetDeviceId = null
-  linkForm.sourcePort = ''
-  linkForm.targetPort = ''
-  linkForm.linkType = '直连'
-  linkForm.remark = ''
-  linkDialogVisible.value = true
-}
-
-// 目标设备选项：同门店、排除自身
-const linkTargetOptions = computed(() => {
-  const d = currentDevice.value
-  if (!d) return []
-  return topoDevices.value
-    .filter((x) => x.storeId === d.storeId && x.id !== d.id)
-    .map((x) => ({ id: x.id, label: topoDeviceName(x) }))
-})
-
-async function handleAddLink() {
-  if (!linkForm.targetDeviceId) {
-    ElMessage.warning('请选择目标设备')
-    return
-  }
+async function handleAddLink(formData: { sourceDeviceId: number; targetDeviceId: number; sourcePort: string; targetPort: string; linkType: string; remark: string }) {
   linkSaving.value = true
   try {
     const { post } = useApi()
-    await post('/api/network-devices/links', {
-      sourceDeviceId: linkForm.sourceDeviceId,
-      targetDeviceId: linkForm.targetDeviceId,
-      sourcePort: linkForm.sourcePort,
-      targetPort: linkForm.targetPort,
-      linkType: linkForm.linkType,
-      remark: linkForm.remark,
-    })
+    await post('/api/network-devices/links', formData)
     ElMessage.success('连线创建成功')
     linkDialogVisible.value = false
-    await fetchTopology()
+    // 刷新拓扑面板（子组件内部 refetch + emit topology-loaded）
+    await topoPanelRef.value?.fetchTopology()
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error))
   } finally {
@@ -701,7 +398,8 @@ async function handleDeleteLink(row: any) {
     const { delete: del } = useApi()
     await del(`/api/network-devices/links/${row.id}`)
     ElMessage.success('连线已删除')
-    await fetchTopology()
+    // 刷新拓扑面板
+    await topoPanelRef.value?.fetchTopology()
   } catch (error) {
     if (error !== 'cancel') ElMessage.error(getApiErrorMessage(error))
   }
@@ -713,97 +411,12 @@ async function handleDeleteLink(row: any) {
   margin-bottom: var(--spacing-card);
 }
 
-.quick-tip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: var(--font-size-small);
-  margin-bottom: var(--spacing-card);
-}
-
 .filter-bar {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   flex-wrap: wrap;
   margin-bottom: var(--spacing-card);
-}
-
-.filter-count {
-  margin-left: auto;
-  color: var(--text-secondary);
-  font-size: var(--font-size-small);
-}
-
-.topology-card {
-  height: 520px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.topology-chart {
-  width: 100%;
-  height: 100%;
-}
-
-.chart-loading {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--text-placeholder);
-  font-size: var(--font-size-small);
-}
-
-.legend-card {
-  display: flex;
-  gap: 40px;
-  flex-wrap: wrap;
-  padding: 12px 20px;
-}
-
-.legend-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.legend-title {
-  font-size: var(--font-size-small);
-  color: var(--text-secondary);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.legend-items {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-small);
-  color: var(--text-regular);
-}
-
-.legend-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.legend-border {
-  border-width: 2px;
-  border-style: solid;
 }
 
 .drawer-id {

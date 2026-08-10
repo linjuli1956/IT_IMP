@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-const BASE = 'http://127.0.0.1:3124';
+const BASE = 'http://127.0.0.1:3000';
 const SHOT_DIR = path.join(__dirname, '..', '..', 'screenshots', 'network-topology-tab');
 
 if (!fs.existsSync(SHOT_DIR)) {
@@ -169,6 +169,33 @@ async function runViewport(vp) {
       await page.locator('.el-select-dropdown__item:has-text("泰兴店")').click().catch(() => {});
       await page.waitForTimeout(2000);
       return shot(page, `topo-${vp.label}-store-filter.png`, `[${vp.label}] 门店筛选态`);
+    });
+
+    // ===== 2.5 类型筛选空态（有连线但筛选后无完整连线） =====
+    await step(results, `topo-${vp.label}-type-filter-empty.png`, `[${vp.label}] 类型筛选空态`, async () => {
+      // 重新加载页面获取干净状态（无门店筛选）
+      await page.goto(`${BASE}/it/network-devices`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+      await page.locator('.el-tabs__item:has-text("网络拓扑")').click();
+      await page.waitForTimeout(3000);
+      // 通过 placeholder 定位设备类型 select
+      const typeInput = page.locator('input[placeholder="设备类型"]');
+      await typeInput.click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(800);
+      // 点击下拉中的 AP 选项
+      const apOption = page.locator('.el-select-dropdown__item').filter({ hasText: 'AP' }).last();
+      await apOption.click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      // DOM 断言：应显示“当前筛选条件下暂无完整连线”
+      const emptyFilteredText = await page.locator('text=当前筛选条件下暂无完整连线').isVisible().catch(() => false);
+      console.log(`  [DOM断言] 类型筛选空态文案存在: ${emptyFilteredText} (期望 true)`);
+      if (!emptyFilteredText) {
+        results.push({ name: `_dom-assert-type-filter-empty-${vp.label}.txt`, ok: false, reason: '未看到类型筛选空态文案' });
+      }
+      // DOM 断言：清空筛选按钮存在
+      const clearFilterBtn = await page.locator('button:has-text("清空设备类型筛选")').isVisible().catch(() => false);
+      console.log(`  [DOM断言] 清空筛选按钮存在: ${clearFilterBtn} (期望 true)`);
+      return shot(page, `topo-${vp.label}-type-filter-empty.png`, `[${vp.label}] 类型筛选空态`);
     });
 
     // ===== 3. 节点抽屉（点击节点打开详情） =====
