@@ -14,7 +14,7 @@
  * 用法：
  *   BASE_URL=http://127.0.0.1:3000 CONFIRM_TEST_DB=YES node scripts/test-link-concurrency.cjs
  *
- * 环境变量（全部必填）：
+ * 必填环境变量：
  *   BASE_URL        — Nuxt 服务器地址（无默认值，必须显式传入）
  *   CONFIRM_TEST_DB — 必须为 YES 才允许执行写入操作
  *
@@ -22,7 +22,8 @@
  *   ADMIN_TOKEN  — 管理员 JWT（优先使用；若不提供则用 admin/123456 登录）
  *   ROUNDS       — 连续执行轮数（默认 5）
  *
- * fixture 命名前缀：e2e_topology_*（所有门店/设备/连线均带此前缀，便于识别和清理）
+ * fixture 命名：所有门店/设备/连线均带 runId（时间戳+随机串），
+ * 即使上轮异常残留，也不会阻塞下一轮创建。
  *
  * ──────────────────────────────────────────────────────
  * 状态：代码已修复、真实 MySQL 未验证
@@ -34,9 +35,7 @@
  * ──────────────────────────────────────────────────────
  */
 
-const PREFIX = 'e2e_topology';
 const ROUNDS = parseInt(process.env.ROUNDS || '5', 10);
-
 const BASE_URL = process.env.BASE_URL || '';
 const CONFIRM = process.env.CONFIRM_TEST_DB || '';
 
@@ -61,6 +60,7 @@ function makeHeaders(token) {
   };
 }
 
+/** 断言 HTTP 响应为 ok，否则抛出包含状态码和响应体的错误 */
 async function assertOk(resp, label) {
   if (!resp.ok) {
     let body = '';
@@ -83,25 +83,35 @@ async function getOrLogin() {
   return data.token;
 }
 
-// ── fixture 清理（按 连线 → 设备 → 门店 顺序） ──
-async function cleanup(headers, storeId, deviceAId, deviceBId) {
+/**
+ * 仅删除两台设备之间的连线。用于创建后和每一轮开始前。
+ * 不会删除设备或门店。
+ */
+async function cleanupLinks(headers, deviceAId, deviceBId) {
+  const topoResp = await fetch(`${BASE_URL}/api/network-devices/topology`, { headers });
+  await assertOk(topoResp, '清理前查询拓扑');
+  const topoData = await topoResp.json();
+  const links = (topoData.links || []).filter(l =>
+    (l.sourceDeviceId === deviceAId && l.targetDeviceId === deviceBId) ||
+    (l.sourceDeviceId === deviceBId && l.targetDeviceId === deviceAId)
+  );
+  for (const link of links) {
+    const delResp = await fetch(`${BASE_URL}/api/network-devices/links/${link.id}`, { method: 'DELETE', headers });
+    await assertOk(delResp, `删除连线 ${link.id}`);
+  }
+}
+
+/**
+ * 严格按 连线 → 两台设备 → 门店 删除全部 fixture。
+ * 仅在 finally 中调用。任一失败必须报错，不静默吞掉。
+ */
+async function cleanupFixture(headers, storeId, deviceAId, deviceBId) {
   const errors = [];
 
   // 1. 删除连线
-  if (deviceAId || deviceBId) {
+  if (deviceAId && deviceBId) {
     try {
-      const topoResp = await fetch(`${BASE_URL}/api/network-devices/topology`, { headers });
-      if (topoResp.ok) {
-        const topoData = await topoResp.json();
-        const links = (topoData.links || []).filter(l =>
-          (l.sourceDeviceId === deviceAId && l.targetDeviceId === deviceBId) ||
-          (l.sourceDeviceId === deviceBId && l.targetDeviceId === deviceAId)
-        );
-        for (const link of links) {
-          const delResp = await fetch(`${BASE_URL}/api/network-devices/links/${link.id}`, { method: 'DELETE', headers });
-          if (!delResp.ok) errors.push(`删除连线 ${link.id} 失败: HTTP ${delResp.status}`);
-        }
-      }
+      await cleanupLinks(headers, deviceAId, deviceBId);
     } catch (e) {
       errors.push(`清理连线异常: ${e.message}`);
     }
@@ -112,7 +122,10 @@ async function cleanup(headers, storeId, deviceAId, deviceBId) {
     if (!devId) continue;
     try {
       const delResp = await fetch(`${BASE_URL}/api/network-devices/${devId}`, { method: 'DELETE', headers });
-      if (!delResp.ok) errors.push(`删除设备 ${devId} 失败: HTTP ${delResp.status}`);
+      if (!delResp.ok) {
+        const body = await delResp.text().catch(() => '');
+        errors.push(`删除设备 ${devId} 失败: HTTP ${delResp.status} ${body.slice(0, 200)}`);
+      }
     } catch (e) {
       errors.push(`清理设备 ${devId} 异常: ${e.message}`);
     }
@@ -122,7 +135,10 @@ async function cleanup(headers, storeId, deviceAId, deviceBId) {
   if (storeId) {
     try {
       const delResp = await fetch(`${BASE_URL}/api/stores/${storeId}`, { method: 'DELETE', headers });
-      if (!delResp.ok) errors.push(`删除门店 ${storeId} 失败: HTTP ${delResp.status}`);
+      if (!delResp.ok) {
+        const body = await delResp.text().catch(() => '');
+        errors.push(`删除门店 ${storeId} 失败: HTTP ${delResp.status} ${body.slice(0, 200)}`);
+      }
     } catch (e) {
       errors.push(`清理门店 ${storeId} 异常: ${e.message}`);
     }
@@ -141,34 +157,60 @@ async function main() {
   ADMIN_TOKEN = await getOrLogin();
   const headers = makeHeaders(ADMIN_TOKEN);
 
+  // ── 生成 runId，确保 fixture 唯一 ──
+  const runId = `e2e_topology_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const r1 = Math.floor(Math.random() * 254) + 1;
+  const r2 = Math.floor(Math.random() * 254) + 1;
+  const h = (n) => n.toString(16).padStart(2, '0').toUpperCase();
+  const ipOctet4B = r2 + 1 <= 254 ? r2 + 1 : r2 - 1;
+
+  const fixture = {
+    storeName: `${runId}_store`,
+    storeCode: `E2E${runId.slice(-6).toUpperCase()}`,
+    serialA: `${runId}_SN_A`,
+    serialB: `${runId}_SN_B`,
+    ipA: `10.99.${r1}.${r2}`,
+    ipB: `10.99.${r1}.${ipOctet4B}`,
+    macA: `AA:${h(r1)}:${h(r2)}:${h(r1 ^ 0x55)}:${h(r2 ^ 0xAA)}:01`,
+    macB: `AA:${h(r1)}:${h(r2)}:${h(r1 ^ 0x55)}:${h(r2 ^ 0xAA)}:02`,
+  };
+
   let storeId, deviceAId, deviceBId;
 
   try {
     // ── 准备 fixture ──
     console.log('\n=== 准备 fixture 数据 ===');
+    console.log(`  runId: ${runId}`);
 
     // 创建门店
     const storeResp = await fetch(`${BASE_URL}/api/stores`, {
       method: 'POST', headers,
-      body: JSON.stringify({ name: `${PREFIX}_store`, code: 'E2E_TPO', sort: 999, status: 1 }),
+      body: JSON.stringify({ name: fixture.storeName, code: fixture.storeCode, sort: 999, status: 1 }),
     });
     await assertOk(storeResp, '创建门店');
-    const storeData = await storeResp.json();
-    storeId = storeData.id;
-    console.log(`  门店 ID: ${storeId} (${PREFIX}_store)`);
+    storeId = (await storeResp.json()).id;
+    console.log(`  门店 ID: ${storeId} (${fixture.storeName})`);
 
-    // 创建设备 A 和 B
-    const deviceBase = { storeId, manageType: '网管型', status: '正常', portCount: 24 };
+    // 创建设备 A
     const devAResp = await fetch(`${BASE_URL}/api/network-devices`, {
       method: 'POST', headers,
-      body: JSON.stringify({ ...deviceBase, deviceType: '交换机', brand: `${PREFIX}`, model: 'DEV-A', serialNo: `${PREFIX}_SN_A`, managementIp: '10.99.99.1', macAddress: 'AA:BB:CC:DD:EE:01' }),
+      body: JSON.stringify({
+        storeId, deviceType: '交换机', manageType: '网管型', brand: runId, model: 'DEV-A',
+        serialNo: fixture.serialA, managementIp: fixture.ipA, macAddress: fixture.macA,
+        portCount: 24, status: '正常',
+      }),
     });
     await assertOk(devAResp, '创建设备 A');
     deviceAId = (await devAResp.json()).id;
 
+    // 创建设备 B
     const devBResp = await fetch(`${BASE_URL}/api/network-devices`, {
       method: 'POST', headers,
-      body: JSON.stringify({ ...deviceBase, deviceType: '路由器', brand: `${PREFIX}`, model: 'DEV-B', serialNo: `${PREFIX}_SN_B`, managementIp: '10.99.99.2', macAddress: 'AA:BB:CC:DD:EE:02' }),
+      body: JSON.stringify({
+        storeId, deviceType: '路由器', manageType: '网管型', brand: runId, model: 'DEV-B',
+        serialNo: fixture.serialB, managementIp: fixture.ipB, macAddress: fixture.macB,
+        portCount: 24, status: '正常',
+      }),
     });
     await assertOk(devBResp, '创建设备 B');
     deviceBId = (await devBResp.json()).id;
@@ -176,28 +218,25 @@ async function main() {
     console.log(`  设备 A ID: ${deviceAId}`);
     console.log(`  设备 B ID: ${deviceBId}`);
 
-    // 清理可能残留的连线
-    await cleanup(headers, null, deviceAId, deviceBId);
-
     // ── 并发测试 ──
     let allPass = true;
     for (let round = 1; round <= ROUNDS; round++) {
       console.log(`\n=== 第 ${round} 轮并发测试 ===`);
 
-      // 先清理上一轮的连线
-      await cleanup(headers, null, deviceAId, deviceBId);
+      // 清理上一轮的连线（仅删连线，不删设备）
+      await cleanupLinks(headers, deviceAId, deviceBId);
       await sleep(200);
 
       // 并发发起 A→B 和 B→A
       const linkAB = {
         sourceDeviceId: deviceAId, targetDeviceId: deviceBId,
         sourcePort: `Port-A-${round}`, targetPort: `Port-B-${round}`,
-        linkType: '直连', remark: `${PREFIX} round${round}`,
+        linkType: '直连', remark: `${runId} round${round}`,
       };
       const linkBA = {
         sourceDeviceId: deviceBId, targetDeviceId: deviceAId,
         sourcePort: `Port-B-${round}`, targetPort: `Port-A-${round}`,
-        linkType: '直连', remark: `${PREFIX} round${round}`,
+        linkType: '直连', remark: `${runId} round${round}`,
       };
 
       console.log('  并发发送 A→B 和 B→A...');
@@ -225,7 +264,7 @@ async function main() {
       // 查询数据库，验证恰好一条连线
       await sleep(200);
       const topoResp = await fetch(`${BASE_URL}/api/network-devices/topology?storeId=${storeId}`, { headers });
-      await assertOk(topoResp, '查询拓扑');
+      await assertOk(topoResp, `第${round}轮查询拓扑`);
       const topoData = await topoResp.json();
       const links = (topoData.links || []).filter(l =>
         (l.sourceDeviceId === deviceAId && l.targetDeviceId === deviceBId) ||
@@ -240,27 +279,22 @@ async function main() {
       }
     }
 
+    // 不在 try 内直接 exit，让 finally 执行清理
+    if (!allPass) {
+      throw new Error('并发测试存在失败轮次');
+    }
+
     console.log('\n=== 并发测试结果 ===');
-    if (allPass) {
-      console.log(`✓ 全部 ${ROUNDS} 轮通过：反方向并发安全已验证`);
-    } else {
-      console.log(`✗ 存在失败轮次：反方向并发安全未完全通过`);
-      process.exit(1);
-    }
+    console.log(`✓ 全部 ${ROUNDS} 轮通过：反方向并发安全已验证`);
   } finally {
-    // ── 完整清理 ──
+    // ── 完整清理 fixture ──
     console.log('\n=== 清理 fixture 数据 ===');
-    try {
-      await cleanup(makeHeaders(ADMIN_TOKEN), storeId, deviceAId, deviceBId);
-      console.log('  清理完成：连线 → 设备 → 门店');
-    } catch (e) {
-      console.error(`  清理失败！请手动检查 ${PREFIX}_* fixture:\n${e.message}`);
-      process.exit(1);
-    }
+    await cleanupFixture(headers, storeId, deviceAId, deviceBId);
+    console.log('  清理完成：连线 → 设备 → 门店');
   }
 }
 
 main().catch((err) => {
-  console.error('测试脚本异常:', err);
+  console.error(err.message);
   process.exit(1);
 });
