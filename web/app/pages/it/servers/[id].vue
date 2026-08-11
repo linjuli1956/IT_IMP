@@ -10,7 +10,16 @@
           <el-icon><Plus /></el-icon>
           新增虚拟机
         </el-button>
-        <el-button v-if="canEdit" @click="openPasswordDialog">服务器凭据</el-button>
+        <el-dropdown v-if="canEdit" trigger="click" @command="handleHeaderMore">
+          <el-button>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="credential">
+                <el-icon><Lock /></el-icon>服务器凭据（可选）
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </PageHeader>
 
@@ -117,37 +126,19 @@
     </template>
 
     <!-- 服务器凭据弹窗 -->
-    <el-dialog v-model="passwordDialogVisible" title="服务器凭据" width="520px" destroy-on-close>
-      <el-form :model="passwordForm" label-width="110px">
-        <el-form-item label="登录账号">
-          <span class="credential-account">{{ detail?.account || '—' }}</span>
-        </el-form-item>
-        <el-form-item label="数据库账号">
-          <span class="credential-account">{{ detail?.dbAccount || '—' }}</span>
-        </el-form-item>
-        <el-form-item label="登录密码">
-          <el-input v-model="passwordForm.password" type="password" show-password placeholder="可选填写。留空表示不修改" />
-        </el-form-item>
-        <el-form-item label="数据库密码">
-          <el-input v-model="passwordForm.dbPassword" type="password" show-password placeholder="可选填写。留空表示不修改" />
-        </el-form-item>
-        <el-alert type="info" :closable="false" show-icon>
-          <template #title>可选填写。留空表示不保存或不修改现有凭据。内网可选保存的服务器凭据。</template>
-        </el-alert>
-      </el-form>
-      <template #footer>
-        <el-button @click="passwordDialogVisible = false">关闭</el-button>
-        <el-button @click="handleViewPassword" :loading="viewingPassword">查看已保存凭据</el-button>
-        <el-button @click="handleClearPassword" type="danger" plain>清除已保存凭据</el-button>
-        <el-button type="primary" :loading="savingPassword" @click="handleSavePassword">保存</el-button>
-      </template>
-    </el-dialog>
+    <ServerCredentialDialog
+      v-model="credDialogVisible"
+      :server-id="detail?.id ?? null"
+      :server-name="detail?.name ?? ''"
+      :account="detail?.account"
+      :db-account="detail?.dbAccount"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Back, Plus } from '@element-plus/icons-vue'
+import { Back, Plus, ArrowDown, Lock } from '@element-plus/icons-vue'
 import { useServerData, getStatusTagType } from '~/composables/useServerData'
 import { getApiErrorMessage } from '~/composables/useApi'
 import type { ServerDetail, ServerVirtualMachine } from '~/types/server'
@@ -156,7 +147,7 @@ const route = useRoute()
 const serverId = computed(() => Number(route.params.id))
 
 const {
-  fetchServerDetail, fetchServerPassword, fetchPhysicalHosts, hostOptions, deleteServer, updateServerPassword,
+  fetchServerDetail, fetchPhysicalHosts, hostOptions, deleteServer,
 } = useServerData()
 
 const detail = ref<ServerDetail | null>(null)
@@ -258,69 +249,12 @@ async function handleDeleteVm(row: ServerVirtualMachine) {
   }
 }
 
-// —— 服务器凭据 ——
-const passwordDialogVisible = ref(false)
-const savingPassword = ref(false)
-const viewingPassword = ref(false)
-const passwordForm = reactive({ password: '', dbPassword: '' })
+// —— 服务器凭据（公共组件 ServerCredentialDialog）——
+const credDialogVisible = ref(false)
 
-function openPasswordDialog() {
-  if (!detail.value) return
-  passwordForm.password = ''
-  passwordForm.dbPassword = ''
-  passwordDialogVisible.value = true
-  // 默认进入设置/更新模式，不自动调用 view API
-}
-
-async function handleViewPassword() {
-  if (!detail.value) return
-  viewingPassword.value = true
-  try {
-    const data = await fetchServerPassword(detail.value.id)
-    passwordForm.password = data.password
-    passwordForm.dbPassword = data.dbPassword
-  } catch (error) {
-    ElMessage.error(getApiErrorMessage(error))
-  } finally {
-    viewingPassword.value = false
-  }
-}
-
-async function handleSavePassword() {
-  if (!detail.value) return
-  if (!passwordForm.password && !passwordForm.dbPassword) {
-    ElMessage.info('两个密码字段均为空，未做修改。如需清除请使用"清除已保存凭据"')
-    return
-  }
-  savingPassword.value = true
-  try {
-    await updateServerPassword(detail.value.id, {
-      ...(passwordForm.password ? { password: passwordForm.password } : {}),
-      ...(passwordForm.dbPassword ? { dbPassword: passwordForm.dbPassword } : {}),
-    })
-    ElMessage.success('凭据已保存')
-    passwordDialogVisible.value = false
-  } catch (error) {
-    ElMessage.error(getApiErrorMessage(error))
-  } finally {
-    savingPassword.value = false
-  }
-}
-
-async function handleClearPassword() {
-  if (!detail.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定要清除服务器「${detail.value.name}」的所有已保存凭据吗？此操作不可撤销。`,
-      '清除凭据确认',
-      { confirmButtonText: '确定清除', cancelButtonText: '取消', type: 'warning' }
-    )
-    await updateServerPassword(detail.value.id, { password: '', dbPassword: '' })
-    ElMessage.success('已清除所有凭据')
-    passwordForm.password = ''
-    passwordForm.dbPassword = ''
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error(getApiErrorMessage(error))
+function handleHeaderMore(cmd: string) {
+  if (cmd === 'credential') {
+    credDialogVisible.value = true
   }
 }
 </script>
@@ -333,5 +267,4 @@ async function handleClearPassword() {
 .host-card { display: flex; flex-wrap: wrap; gap: 24px; }
 .host-item { display: flex; flex-direction: column; gap: 4px; }
 .host-label { font-size: var(--font-size-mini); color: var(--text-secondary); }
-.credential-account { font-family: var(--font-family-mono, monospace); color: var(--text-primary); }
 </style>

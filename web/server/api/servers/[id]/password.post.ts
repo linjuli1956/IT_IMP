@@ -10,16 +10,17 @@
 import { prisma } from '../../../utils/prisma'
 import { parsePositiveSafeId } from '../../../utils/request-validation'
 import { requireRole, getClientIp } from '../../../utils/auth'
+import { validatePasswordBody } from '../../../utils/password-validation'
 import { readBody, getRouterParam, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
   const id = parsePositiveSafeId(getRouterParam(event, 'id'))
 
-  const body = await readBody<{ action?: string; password?: string; dbPassword?: string }>(event)
-  const action = body?.action
-  if (action !== 'view' && action !== 'update') {
-    throw createError({ statusCode: 400, message: 'action 必须为 view 或 update' })
+  const body = await readBody(event)
+  const result = validatePasswordBody(body)
+  if (!result.valid) {
+    throw createError({ statusCode: result.statusCode, message: result.message })
   }
 
   const server = await prisma.server.findUnique({
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event: H3Event) => {
     throw createError({ statusCode: 404, message: '服务器不存在' })
   }
 
-  if (action === 'view') {
+  if (result.action === 'view') {
     await prisma.operationLog.create({
       data: {
         userId: user.userId,
@@ -44,36 +45,23 @@ export default defineEventHandler(async (event: H3Event) => {
     return { password: server.password, dbPassword: server.dbPassword }
   }
 
-  // update：只更新提供的字段；传空字符串视为清空；非字符串类型拒绝
-  const data: { password?: string; dbPassword?: string } = {}
-  if (body.password !== undefined) {
-    if (typeof body.password !== 'string') {
-      throw createError({ statusCode: 400, message: 'password 必须为字符串' })
-    }
-    data.password = body.password
-  }
-  if (body.dbPassword !== undefined) {
-    if (typeof body.dbPassword !== 'string') {
-      throw createError({ statusCode: 400, message: 'dbPassword 必须为字符串' })
-    }
-    data.dbPassword = body.dbPassword
-  }
-  if (Object.keys(data).length === 0) {
-    throw createError({ statusCode: 400, message: '未提供要更新的密码字段' })
-  }
+  // update：只更新提供的字段；传空字符串视为清空
+  const data = result.data
 
-  await prisma.server.update({ where: { id }, data })
-
-  await prisma.operationLog.create({
-    data: {
-      userId: user.userId,
-      username: user.username,
-      action: '编辑',
-      module: 'IT资产管理',
-      content: `更新服务器「${server.name}」登录凭据`,
-      ip: getClientIp(event),
-    },
-  })
+  // 更新凭据 + 写操作日志：同一事务，保证原子性
+  await prisma.$transaction([
+    prisma.server.update({ where: { id }, data }),
+    prisma.operationLog.create({
+      data: {
+        userId: user.userId,
+        username: user.username,
+        action: '编辑',
+        module: 'IT资产管理',
+        content: `更新服务器「${server.name}」登录凭据`,
+        ip: getClientIp(event),
+      },
+    }),
+  ])
 
   return { success: true }
 })

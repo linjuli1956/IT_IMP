@@ -519,31 +519,13 @@
     </el-dialog>
 
     <!-- 服务器凭据弹窗 -->
-    <el-dialog v-model="passwordDialogVisible" title="服务器凭据" width="520px" destroy-on-close>
-      <el-form :model="passwordForm" label-width="110px">
-        <el-form-item label="登录账号">
-          <span class="credential-account">{{ passwordTarget?.account || '—' }}</span>
-        </el-form-item>
-        <el-form-item label="数据库账号">
-          <span class="credential-account">{{ passwordTarget?.dbAccount || '—' }}</span>
-        </el-form-item>
-        <el-form-item label="登录密码">
-          <el-input v-model="passwordForm.password" type="password" show-password placeholder="可选填写。留空表示不修改" />
-        </el-form-item>
-        <el-form-item label="数据库密码">
-          <el-input v-model="passwordForm.dbPassword" type="password" show-password placeholder="可选填写。留空表示不修改" />
-        </el-form-item>
-        <el-alert type="info" :closable="false" show-icon>
-          <template #title>可选填写。留空表示不保存或不修改现有凭据。内网可选保存的服务器凭据。</template>
-        </el-alert>
-      </el-form>
-      <template #footer>
-        <el-button @click="passwordDialogVisible = false">关闭</el-button>
-        <el-button @click="handleViewPassword" :loading="viewingPassword">查看已保存凭据</el-button>
-        <el-button @click="handleClearPassword" type="danger" plain>清除已保存凭据</el-button>
-        <el-button type="primary" :loading="savingPassword" @click="handleSavePassword">保存</el-button>
-      </template>
-    </el-dialog>
+    <ServerCredentialDialog
+      v-model="credDialogVisible"
+      :server-id="credTarget?.id ?? null"
+      :server-name="credTarget?.name ?? ''"
+      :account="credTarget?.account"
+      :db-account="credTarget?.dbAccount"
+    />
   </div>
 </template>
 
@@ -566,7 +548,6 @@ const {
   refreshWorkspace,
   fetchServers, fetchServerTree, fetchServerStats, fetchPhysicalHosts,
   fetchServerDetail, addServer, updateServer, deleteServer,
-  fetchServerPassword, updateServerPassword,
   serverTypeOptions, serverStatusOptions, hypervisorOptions, diskTypeOptions,
   getServerTypeTagAttrs, assignCustomTypeColor, getStatusTagType, getExpireDays,
 } = useServerWorkspace()
@@ -890,71 +871,13 @@ function syncDrawerAfterRefresh() {
   }
 }
 
-// —— 服务器凭据 ——
-const passwordDialogVisible = ref(false)
-const savingPassword = ref(false)
-const viewingPassword = ref(false)
-const passwordForm = reactive({ password: '', dbPassword: '' })
-const passwordTarget = ref<ServerItem | null>(null)
+// —— 服务器凭据（公共组件 ServerCredentialDialog）——
+const credDialogVisible = ref(false)
+const credTarget = ref<ServerItem | null>(null)
 
 function openPasswordDialog(row: any) {
-  passwordTarget.value = row as ServerItem
-  passwordForm.password = ''
-  passwordForm.dbPassword = ''
-  passwordDialogVisible.value = true
-  // 默认进入设置/更新模式，不自动调用 view API
-}
-
-async function handleViewPassword() {
-  if (!passwordTarget.value) return
-  viewingPassword.value = true
-  try {
-    const data = await fetchServerPassword(passwordTarget.value.id)
-    passwordForm.password = data.password
-    passwordForm.dbPassword = data.dbPassword
-  } catch (error) {
-    ElMessage.error(getApiErrorMessage(error))
-  } finally {
-    viewingPassword.value = false
-  }
-}
-
-async function handleSavePassword() {
-  if (!passwordTarget.value) return
-  if (!passwordForm.password && !passwordForm.dbPassword) {
-    ElMessage.info('两个密码字段均为空，未做修改。如需清除请使用"清除已保存凭据"')
-    return
-  }
-  savingPassword.value = true
-  try {
-    await updateServerPassword(passwordTarget.value.id, {
-      ...(passwordForm.password ? { password: passwordForm.password } : {}),
-      ...(passwordForm.dbPassword ? { dbPassword: passwordForm.dbPassword } : {}),
-    })
-    ElMessage.success('凭据已保存')
-    passwordDialogVisible.value = false
-  } catch (error) {
-    ElMessage.error(getApiErrorMessage(error))
-  } finally {
-    savingPassword.value = false
-  }
-}
-
-async function handleClearPassword() {
-  if (!passwordTarget.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定要清除服务器「${passwordTarget.value.name}」的所有已保存凭据吗？此操作不可撤销。`,
-      '清除凭据确认',
-      { confirmButtonText: '确定清除', cancelButtonText: '取消', type: 'warning' }
-    )
-    await updateServerPassword(passwordTarget.value.id, { password: '', dbPassword: '' })
-    ElMessage.success('已清除所有凭据')
-    passwordForm.password = ''
-    passwordForm.dbPassword = ''
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error(getApiErrorMessage(error))
-  }
+  credTarget.value = row as ServerItem
+  credDialogVisible.value = true
 }
 
 // —— 行操作“更多”下拉 + Drawer footer 操作 ——
@@ -1021,11 +944,6 @@ function handleFooterAction(cmd: string) {
   color: var(--text-secondary);
   line-height: 1.4;
   margin-top: 4px;
-}
-
-.credential-account {
-  font-family: var(--font-family-mono, monospace);
-  color: var(--text-primary);
 }
 
 /* —— 树形列表信息着色 —— */
