@@ -3,7 +3,7 @@
  * POST /api/servers/:id/password
  * 请求头: Authorization: Bearer xxx (仅管理员或操作员，查看者 403)
  * 请求体: { action: 'view' | 'update', password?, dbPassword? }
- *  - view：返回 { password, dbPassword }（内网运维查看）
+ *  - view：返回 { password, dbPassword }（内网可选保存的服务器凭据，管理员/操作员显式查看）
  *  - update：更新传入的密码字段（仅更新提供的字段），不返回新密码
  * 安全: 密码不写入操作日志；日志仅记录"查看/更新了密码"
  */
@@ -44,10 +44,20 @@ export default defineEventHandler(async (event: H3Event) => {
     return { password: server.password, dbPassword: server.dbPassword }
   }
 
-  // update：只更新提供的字段；传空字符串视为清空
+  // update：只更新提供的字段；传空字符串视为清空；非字符串类型拒绝
   const data: { password?: string; dbPassword?: string } = {}
-  if (body.password !== undefined) data.password = String(body.password)
-  if (body.dbPassword !== undefined) data.dbPassword = String(body.dbPassword)
+  if (body.password !== undefined) {
+    if (typeof body.password !== 'string') {
+      throw createError({ statusCode: 400, message: 'password 必须为字符串' })
+    }
+    data.password = body.password
+  }
+  if (body.dbPassword !== undefined) {
+    if (typeof body.dbPassword !== 'string') {
+      throw createError({ statusCode: 400, message: 'dbPassword 必须为字符串' })
+    }
+    data.dbPassword = body.dbPassword
+  }
   if (Object.keys(data).length === 0) {
     throw createError({ statusCode: 400, message: '未提供要更新的密码字段' })
   }

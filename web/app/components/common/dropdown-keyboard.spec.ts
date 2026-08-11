@@ -43,7 +43,7 @@ const TestDropdown = defineComponent({
         class: 'action-text action-text--info',
       }, '更多'),
       dropdown: () => h(ElDropdownMenu as any, () => [
-        h(ElDropdownItem as any, { command: 'password' }, () => '密码管理'),
+        h(ElDropdownItem as any, { command: 'password' }, () => '服务器凭据（可选）'),
         h(ElDropdownItem as any, { command: 'detail' }, () => '打开详情页'),
       ]),
     })
@@ -92,7 +92,7 @@ describe('el-dropdown "更多" 触发器键盘可达性', () => {
     const items = document.querySelectorAll('.el-dropdown-menu__item')
     expect(items.length).toBeGreaterThan(0)
 
-    // 点击第一个菜单项（密码管理）
+    // 点击第一个菜单项（服务器凭据）
     ;(items[0] as HTMLElement).click()
     await nextTick()
 

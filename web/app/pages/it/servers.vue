@@ -202,7 +202,7 @@
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item command="password">
-                      <el-icon class="dropdown-icon dropdown-icon--credential"><Lock /></el-icon>密码管理
+                      <el-icon class="dropdown-icon dropdown-icon--credential"><Lock /></el-icon>服务器凭据（可选）
                     </el-dropdown-item>
                     <el-dropdown-item v-if="manageUrlOf(row as ServerListItem)" command="manage">
                       <el-icon class="dropdown-icon dropdown-icon--external"><Link /></el-icon>进入管理
@@ -277,19 +277,21 @@
       <template #footer>
         <ActionButton variant="close" size="small" @click="drawerVisible = false">关闭</ActionButton>
         <ActionButton v-if="canEdit" variant="primary" size="small" :icon="Edit" @click="handleEdit(selectedServer!)">编辑</ActionButton>
-        <ActionButton v-if="canEdit" variant="credential" size="small" @click="openPasswordDialog(selectedServer!)">密码管理</ActionButton>
         <ActionButton v-if="selectedServer && manageUrlOf(selectedServer)" variant="external" size="small" :href="manageUrlOf(selectedServer!)!">进入管理</ActionButton>
-        <ActionButton v-if="!showDetailInMore" variant="info" size="small" @click="goDetail(selectedServer!.id)">打开详情页</ActionButton>
-        <el-dropdown v-else trigger="click" @command="handleFooterAction">
+        <el-dropdown v-if="canEdit" trigger="click" @command="handleFooterAction">
           <button type="button" class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item command="credential">
+                <el-icon class="dropdown-icon dropdown-icon--credential"><Lock /></el-icon>服务器凭据（可选）
+              </el-dropdown-item>
               <el-dropdown-item command="detail">
                 <el-icon class="dropdown-icon dropdown-icon--info"><View /></el-icon>打开详情页
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <ActionButton v-else variant="info" size="small" @click="goDetail(selectedServer!.id)">打开详情页</ActionButton>
       </template>
     </AssetDetailDrawer>
 
@@ -297,7 +299,7 @@
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="800px" destroy-on-close>
       <el-form :model="formData" label-width="100px" :rules="rules" ref="formRef">
         <el-alert type="info" :closable="false" show-icon class="form-alert">
-          <template #title>密码不在此处填写：登录/数据库密码通过"密码管理"独立操作（仅管理员/操作员）</template>
+          <template #title>密码不在此处填写：登录/数据库密码通过"服务器凭据"独立操作（仅管理员/操作员）</template>
         </el-alert>
         <el-row :gutter="16">
           <el-col :span="12">
@@ -516,23 +518,30 @@
       </template>
     </el-dialog>
 
-    <!-- 密码管理弹窗 -->
-    <el-dialog v-model="passwordDialogVisible" title="密码管理" width="480px" destroy-on-close>
-      <el-form :model="passwordForm" label-width="100px">
+    <!-- 服务器凭据弹窗 -->
+    <el-dialog v-model="passwordDialogVisible" title="服务器凭据" width="520px" destroy-on-close>
+      <el-form :model="passwordForm" label-width="110px">
+        <el-form-item label="登录账号">
+          <span class="credential-account">{{ passwordTarget?.account || '—' }}</span>
+        </el-form-item>
+        <el-form-item label="数据库账号">
+          <span class="credential-account">{{ passwordTarget?.dbAccount || '—' }}</span>
+        </el-form-item>
         <el-form-item label="登录密码">
-          <el-input v-model="passwordForm.password" type="password" show-password :placeholder="passwordMode === 'view' ? '点击查看' : '留空保持不变'" />
+          <el-input v-model="passwordForm.password" type="password" show-password placeholder="可选填写。留空表示不修改" />
         </el-form-item>
         <el-form-item label="数据库密码">
-          <el-input v-model="passwordForm.dbPassword" type="password" show-password :placeholder="passwordMode === 'view' ? '点击查看' : '留空保持不变'" />
+          <el-input v-model="passwordForm.dbPassword" type="password" show-password placeholder="可选填写。留空表示不修改" />
         </el-form-item>
         <el-alert type="info" :closable="false" show-icon>
-          <template #title>{{ passwordMode === 'view' ? '查看模式：显示当前保存的密码' : '更新模式：留空字段保持不变，非空则覆盖' }}</template>
+          <template #title>可选填写。留空表示不保存或不修改现有凭据。内网可选保存的服务器凭据。</template>
         </el-alert>
       </el-form>
       <template #footer>
         <el-button @click="passwordDialogVisible = false">关闭</el-button>
-        <el-button v-if="passwordMode === 'view'" @click="switchPasswordMode">切换为更新</el-button>
-        <el-button v-else type="primary" :loading="savingPassword" @click="handleSavePassword">保存密码</el-button>
+        <el-button @click="handleViewPassword" :loading="viewingPassword">查看已保存凭据</el-button>
+        <el-button @click="handleClearPassword" type="danger" plain>清除已保存凭据</el-button>
+        <el-button type="primary" :loading="savingPassword" @click="handleSavePassword">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -881,43 +890,48 @@ function syncDrawerAfterRefresh() {
   }
 }
 
-// —— 密码管理 ——
+// —— 服务器凭据 ——
 const passwordDialogVisible = ref(false)
-const passwordMode = ref<'view' | 'update'>('view')
 const savingPassword = ref(false)
+const viewingPassword = ref(false)
 const passwordForm = reactive({ password: '', dbPassword: '' })
-let passwordTarget: ServerItem | null = null
+const passwordTarget = ref<ServerItem | null>(null)
 
-async function openPasswordDialog(row: any) {
-  passwordTarget = row as ServerItem
-  passwordMode.value = 'view'
+function openPasswordDialog(row: any) {
+  passwordTarget.value = row as ServerItem
   passwordForm.password = ''
   passwordForm.dbPassword = ''
   passwordDialogVisible.value = true
+  // 默认进入设置/更新模式，不自动调用 view API
+}
+
+async function handleViewPassword() {
+  if (!passwordTarget.value) return
+  viewingPassword.value = true
   try {
-    const data = await fetchServerPassword(passwordTarget.id)
+    const data = await fetchServerPassword(passwordTarget.value.id)
     passwordForm.password = data.password
     passwordForm.dbPassword = data.dbPassword
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error))
+  } finally {
+    viewingPassword.value = false
   }
 }
 
-function switchPasswordMode() {
-  passwordMode.value = 'update'
-  passwordForm.password = ''
-  passwordForm.dbPassword = ''
-}
-
 async function handleSavePassword() {
-  if (!passwordTarget) return
+  if (!passwordTarget.value) return
+  if (!passwordForm.password && !passwordForm.dbPassword) {
+    ElMessage.info('两个密码字段均为空，未做修改。如需清除请使用"清除已保存凭据"')
+    return
+  }
   savingPassword.value = true
   try {
-    await updateServerPassword(passwordTarget.id, {
+    await updateServerPassword(passwordTarget.value.id, {
       ...(passwordForm.password ? { password: passwordForm.password } : {}),
       ...(passwordForm.dbPassword ? { dbPassword: passwordForm.dbPassword } : {}),
     })
-    ElMessage.success('密码已更新')
+    ElMessage.success('凭据已保存')
     passwordDialogVisible.value = false
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error))
@@ -926,11 +940,24 @@ async function handleSavePassword() {
   }
 }
 
-// —— 行操作“更多”下拉 + Drawer footer 溢出控制 ——
-const showDetailInMore = computed(() => {
-  return canEdit.value && !!selectedServer.value && !!manageUrlOf(selectedServer.value)
-})
+async function handleClearPassword() {
+  if (!passwordTarget.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定要清除服务器「${passwordTarget.value.name}」的所有已保存凭据吗？此操作不可撤销。`,
+      '清除凭据确认',
+      { confirmButtonText: '确定清除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await updateServerPassword(passwordTarget.value.id, { password: '', dbPassword: '' })
+    ElMessage.success('已清除所有凭据')
+    passwordForm.password = ''
+    passwordForm.dbPassword = ''
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error(getApiErrorMessage(error))
+  }
+}
 
+// —— 行操作“更多”下拉 + Drawer footer 操作 ——
 function handleRowAction(cmd: string, row: ServerListItem) {
   switch (cmd) {
     case 'password': openPasswordDialog(row); break
@@ -946,6 +973,8 @@ function handleRowAction(cmd: string, row: ServerListItem) {
 function handleFooterAction(cmd: string) {
   if (cmd === 'detail' && selectedServer.value) {
     goDetail(selectedServer.value.id)
+  } else if (cmd === 'credential' && selectedServer.value) {
+    openPasswordDialog(selectedServer.value)
   }
 }
 </script>
@@ -992,6 +1021,11 @@ function handleFooterAction(cmd: string) {
   color: var(--text-secondary);
   line-height: 1.4;
   margin-top: 4px;
+}
+
+.credential-account {
+  font-family: var(--font-family-mono, monospace);
+  color: var(--text-primary);
 }
 
 /* —— 树形列表信息着色 —— */
