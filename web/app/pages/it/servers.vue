@@ -198,7 +198,7 @@
               <button class="action-text action-text--primary" @click="handleEdit(row)">编辑</button>
               <button class="action-text action-text--danger" @click="handleDelete(row)">删除</button>
               <el-dropdown trigger="click" @command="(cmd: string) => handleRowAction(cmd, row as ServerListItem)">
-                <span class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></span>
+                <button type="button" class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></button>
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item command="password">
@@ -281,7 +281,7 @@
         <ActionButton v-if="selectedServer && manageUrlOf(selectedServer)" variant="external" size="small" :href="manageUrlOf(selectedServer!)!">进入管理</ActionButton>
         <ActionButton v-if="!showDetailInMore" variant="info" size="small" @click="goDetail(selectedServer!.id)">打开详情页</ActionButton>
         <el-dropdown v-else trigger="click" @command="handleFooterAction">
-          <span class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></span>
+          <button type="button" class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="detail">
@@ -989,7 +989,7 @@ function handleFooterAction(cmd: string) {
 .form-alert { margin-bottom: 16px; }
 .form-tip {
   font-size: var(--font-size-small, 12px);
-  color: var(--color-text-secondary, #909399);
+  color: var(--text-secondary);
   line-height: 1.4;
   margin-top: 4px;
 }
@@ -1016,7 +1016,7 @@ function handleFooterAction(cmd: string) {
 .spec-val { font-size: var(--font-size-small); color: var(--text-primary); }
 
 .text-muted { color: var(--text-placeholder); }
-.text-secondary { color: var(--text-secondary, #909399); }
+.text-secondary { color: var(--text-secondary); }
 
 /* —— 抽屉内部 —— */
 .drawer-section-title {

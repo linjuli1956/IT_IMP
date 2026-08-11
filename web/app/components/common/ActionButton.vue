@@ -18,11 +18,14 @@
 <template>
   <a
     v-if="href"
-    :href="disabled ? undefined : href"
+    :href="isUnavailable ? undefined : href"
     target="_blank"
     rel="noopener"
-    :class="['action-btn', `action-btn--${variant}`, `action-btn--${size}`, { 'is-disabled': disabled }]"
-    :aria-disabled="disabled"
+    :tabindex="isUnavailable ? -1 : undefined"
+    :class="['action-btn', `action-btn--${variant}`, `action-btn--${size}`, { 'is-disabled': isUnavailable }]"
+    :aria-disabled="isUnavailable"
+    :aria-busy="loading"
+    @click="handleClick"
   >
     <el-icon v-if="loading" class="is-loading"><Loading /></el-icon>
     <el-icon v-else-if="resolvedIcon" class="action-btn__icon"><component :is="resolvedIcon" /></el-icon>
@@ -31,8 +34,8 @@
   <button
     v-else
     type="button"
-    :disabled="disabled || loading"
-    :class="['action-btn', `action-btn--${variant}`, `action-btn--${size}`, { 'is-disabled': disabled }]"
+    :disabled="isUnavailable"
+    :class="['action-btn', `action-btn--${variant}`, `action-btn--${size}`, { 'is-disabled': isUnavailable }]"
     @click="handleClick"
   >
     <el-icon v-if="loading" class="is-loading"><Loading /></el-icon>
@@ -42,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Component } from 'vue'
+import { computed, type Component } from 'vue'
 import { Loading, Lock, Link as LinkIcon } from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{
@@ -70,8 +73,15 @@ const defaultIcons: Partial<Record<string, Component>> = {
 
 const resolvedIcon = computed(() => props.icon || defaultIcons[props.variant] || null)
 
+/** disabled 或 loading 均视为不可用：外链移除 href、不可聚焦、阻止点击 */
+const isUnavailable = computed(() => props.disabled || props.loading)
+
 function handleClick(event: MouseEvent) {
-  if (props.disabled || props.loading) return
+  if (isUnavailable.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
   emit('click', event)
 }
 </script>

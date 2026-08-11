@@ -286,6 +286,7 @@ body {
 }
 .action-text:hover { opacity: 0.75; }
 .action-text:disabled { opacity: 0.5; cursor: not-allowed; }
+.action-text:focus-visible { outline: 2px solid var(--action-primary-bg); outline-offset: 2px; }
 .action-text--close { color: var(--text-secondary); }
 .action-text--primary { color: var(--action-primary-bg); }
 .action-text--danger { color: var(--action-danger-bg); }
