@@ -1,8 +1,9 @@
 <!--
   ServiceAssetCard：服务型资产通用卡片（域名 / 小程序）。
   设计依据：docs/IT资产页面分型与交互规范.md §5.1 / §6.6 / §6.7
+  v0.2 决策 3：编辑平铺为文字按钮，删除为红色文字操作，不保留只有编辑/删除的更多菜单
   - 点击卡片 → 打开 AssetDetailDrawer（emit click）
-  - 右上角"更多"菜单含编辑/删除，@click.stop 不误开抽屉
+  - 右上角平铺编辑+删除文字按钮，@click.stop 不误开抽屉
   - 敏感字段不传入本组件，仅在抽屉按需显示
   - 复用 token，禁止硬编码颜色
 -->
@@ -17,23 +18,16 @@
     @keydown.enter.prevent="emit('click')"
     @keydown.space.prevent="emit('click')"
   >
-    <!-- 顶栏：标题 + 更多菜单 -->
+    <!-- 顶栏：标题 + 平铺操作按钮 -->
     <div class="service-card__head">
       <div class="service-card__title-wrap">
         <span class="service-card__title">{{ title }}</span>
         <span v-if="subtitle" class="service-card__subtitle">{{ subtitle }}</span>
       </div>
-      <el-dropdown v-if="canEdit" trigger="click" @command="onCommand">
-        <el-button class="service-card__more" text :aria-label="`更多操作 ${title}`" @click.stop @keydown.enter.stop @keydown.space.stop>
-          <el-icon><MoreFilled /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="edit">编辑</el-dropdown-item>
-            <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+      <div v-if="canEdit" class="service-card__actions">
+        <el-button text size="small" :aria-label="`编辑 ${title}`" @click.stop="emit('edit')">编辑</el-button>
+        <el-button text size="small" type="danger" :aria-label="`删除 ${title}`" @click.stop="emit('delete')">删除</el-button>
+      </div>
     </div>
 
     <!-- Tag 区：SSL 类型 / 状态 / 到期倒计时 -->
@@ -60,7 +54,6 @@
 </template>
 
 <script setup lang="ts">
-import { MoreFilled } from '@element-plus/icons-vue'
 
 /** 服务型卡片 Tag（SSL 类型 / 状态 / 到期倒计时，字段级着色） */
 export interface ServiceTag {
@@ -93,11 +86,6 @@ const emit = defineEmits<{
   edit: []
   delete: []
 }>()
-
-function onCommand(cmd: string) {
-  if (cmd === 'edit') emit('edit')
-  if (cmd === 'delete') emit('delete')
-}
 </script>
 
 <style scoped>
@@ -151,9 +139,11 @@ function onCommand(cmd: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.service-card__more {
+.service-card__actions {
   flex-shrink: 0;
-  padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .service-card__tags {

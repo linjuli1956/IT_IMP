@@ -10,6 +10,10 @@
           <el-radio-button value="card">卡片总览</el-radio-button>
           <el-radio-button value="list">列表管理</el-radio-button>
         </el-radio-group>
+        <el-button v-if="canEdit" @click="handleExportCsv">
+          <el-icon><Download /></el-icon>
+          导出当前页 CSV
+        </el-button>
         <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增域名
@@ -117,7 +121,14 @@
         </el-tag>
       </template>
       <el-descriptions v-if="currentRow" :column="2" border size="small">
-        <el-descriptions-item label="域名">{{ currentRow.domain }}</el-descriptions-item>
+        <el-descriptions-item label="域名">
+          <span class="drawer-field">
+            {{ currentRow.domain }}
+            <el-button class="drawer-copy-btn" text size="small" aria-label="复制域名" @click="copyField(currentRow.domain, '域名')">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
+        </el-descriptions-item>
         <el-descriptions-item label="服务商">{{ currentRow.certIssuer || '—' }}</el-descriptions-item>
         <el-descriptions-item label="证书类型">{{ currentRow.certType || '—' }}</el-descriptions-item>
         <el-descriptions-item label="状态">{{ currentRow.status }}</el-descriptions-item>
@@ -197,14 +208,41 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Document, CircleCheck, WarningFilled, CircleClose, Search } from '@element-plus/icons-vue'
+import { Plus, Document, CircleCheck, WarningFilled, CircleClose, Search, CopyDocument, Download } from '@element-plus/icons-vue'
 import { useDomainData, certTypeOptions, certTypeTagMap, type DomainItem } from '~/composables/useDomainData'
 import { buildDomainPreviewRows } from '~/utils/preview-utils'
 import { getExpireInfo, getAssetStatusTagType } from '~/utils/asset-utils'
 import { getApiErrorMessage } from '~/composables/useApi'
+import { useClipboard } from '~/composables/useClipboard'
+import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
 const { domainList, loading, domainStatusOptions, fetchDomains, addDomain, updateDomain, deleteDomain } = useDomainData()
+
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function copyField(value: string, label: string) {
+  copy(value, label)
+}
+
+// — 导出当前页 CSV（UTF-8 BOM，仅白名单列，排除敏感字段）—
+const csvColumns: CsvColumn<DomainItem>[] = [
+  { prop: 'domain', label: '域名' },
+  { prop: 'certType', label: '证书类型' },
+  { prop: 'certIssuer', label: '颁发机构' },
+  { prop: 'certRenewDate', label: '更换日期' },
+  { prop: 'certExpireDate', label: '到期日期' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+function handleExportCsv() {
+  if (filteredDomains.value.length === 0) {
+    ElMessage.warning('当前无数据可导出')
+    return
+  }
+  exportCurrentPageCsv('域名管理', csvColumns, filteredDomains.value)
+  ElMessage.success(`已导出当前页 ${filteredDomains.value.length} 条数据`)
+}
 
 // —— 视图模式切换：默认卡片总览 ——
 const viewMode = ref<'card' | 'list'>('card')
@@ -454,4 +492,18 @@ function handleBatchCopy(rows: DomainItem[]) {
 .view-switcher { margin-right: 8px; }
 .domain-name { color: var(--color-primary); font-weight: 500; cursor: pointer; }
 .expire-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+.drawer-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.drawer-copy-btn {
+  padding: 0;
+  min-height: auto;
+  color: var(--text-secondary);
+}
+.drawer-copy-btn:hover {
+  color: var(--color-primary);
+}
 </style>
