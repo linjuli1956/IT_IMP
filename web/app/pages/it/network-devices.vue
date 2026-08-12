@@ -6,6 +6,10 @@
       :description="`管理门店网络设备：网管交换机、企业级路由器、AP 等。序列号/管理IP/MAC 本模块内唯一。仅管理员与操作员可编辑。`"
     >
       <template #actions>
+        <el-button v-if="canEdit && activeTab === 'ledger'" @click="handleExportCsv">
+          <el-icon><Download /></el-icon>
+          导出当前页 CSV
+        </el-button>
         <el-button v-if="canEdit && activeTab === 'ledger'" type="primary" @click="openAdd">
           <el-icon><Plus /></el-icon>
           新增设备
@@ -83,7 +87,12 @@
       </template>
       <el-descriptions v-if="currentDevice" :column="2" border size="small">
         <el-descriptions-item v-for="f in drawerItems" :key="f.label" :label="f.label" :span="f.span || 1">
-          {{ f.value }}
+          <span class="drawer-field">
+            {{ f.value }}
+            <el-button v-if="f.copyable && f.value !== '—'" class="drawer-copy-btn" text size="small" :aria-label="`复制${f.label}`" @click="copyField(f.value, f.label)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
         </el-descriptions-item>
       </el-descriptions>
 
@@ -136,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, CopyDocument, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNetworkDeviceData, networkDeviceTypeOptions, networkManageTypeOptions } from '~/composables/useNetworkDeviceData'
 import { useStoreData } from '~/composables/useStoreData'
@@ -148,6 +157,8 @@ import type { AssetColumn } from '~/components/asset/AssetTable.vue'
 import type { NetworkDeviceItem } from '~/types/network-device'
 import { applyDeviceFilterPatch, buildDeviceQuery, type DeviceFilters } from '~/utils/device-query'
 import { buildDevicePreviewRows } from '~/utils/preview-utils'
+import { useClipboard } from '~/composables/useClipboard'
+import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type NetworkTopologyPanel from '~/components/topology/NetworkTopologyPanel.vue'
 
 // —— Tab 切换 ——
@@ -206,7 +217,7 @@ const columns: AssetColumn<NetworkDeviceItem>[] = [
   { key: 'storeName', label: '门店', width: 130, slot: 'storeName' },
   { key: 'brand', label: '品牌', width: 100 },
   { key: 'model', label: '型号', width: 120 },
-  { key: 'managementIp', label: '管理IP', width: 130 },
+  { key: 'managementIp', label: '管理IP', width: 130, copyable: true },
   { key: 'portCount', label: '端口数', width: 80, align: 'center' as const },
   { key: 'installLocation', label: '位置', minWidth: 120 },
   { key: 'status', label: '状态', width: 80, align: 'center' as const, type: 'status' as const },
@@ -285,6 +296,32 @@ async function handleDelete(row: NetworkDeviceItem) {
   }
 }
 
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function copyField(value: string, label: string) {
+  copy(value, label)
+}
+
+// — 导出当前页 CSV（UTF-8 BOM，仅白名单列，不新增 API）—
+const csvColumns: CsvColumn<NetworkDeviceItem>[] = [
+  { prop: 'deviceType', label: '类型' },
+  { prop: 'storeName', label: '门店' },
+  { prop: 'brand', label: '品牌' },
+  { prop: 'model', label: '型号' },
+  { prop: 'managementIp', label: '管理IP' },
+  { prop: 'portCount', label: '端口数' },
+  { prop: 'installLocation', label: '安装位置' },
+  { prop: 'status', label: '状态' },
+]
+function handleExportCsv() {
+  if (deviceList.value.length === 0) {
+    ElMessage.warning('当前页无数据可导出')
+    return
+  }
+  exportCurrentPageCsv('网络设备台账', csvColumns, deviceList.value)
+  ElMessage.success(`已导出当前页 ${deviceList.value.length} 条数据`)
+}
+
 // =====================
 // 网络拓扑（事件编排）
 // =====================
@@ -329,20 +366,20 @@ const drawerHeaderLabel = computed(() => {
   return `${d.deviceType} · ${d.storeName || ''}`
 })
 
-const drawerItems = computed<{ label: string; value: string; span?: number }[]>(() => {
+const drawerItems = computed<{ label: string; value: string; span?: number; copyable?: boolean }[]>(() => {
   const d = currentDevice.value
   if (!d) return []
   const name = [d.brand, d.model].filter(Boolean).join(' ') || `未命名${d.deviceType}`
   return [
-    { label: '名称', value: name },
+    { label: '名称', value: name, copyable: true },
     { label: '门店', value: d.storeName || '—' },
     { label: '设备类型', value: d.deviceType },
     { label: '管理类型', value: d.manageType || '—' },
     { label: '品牌', value: d.brand || '—' },
     { label: '型号', value: d.model || '—' },
-    { label: '序列号', value: d.serialNo || '—' },
-    { label: '管理IP', value: d.managementIp || '—' },
-    { label: 'MAC地址', value: d.macAddress || '—' },
+    { label: '序列号', value: d.serialNo || '—', copyable: true },
+    { label: '管理IP', value: d.managementIp || '—', copyable: true },
+    { label: 'MAC地址', value: d.macAddress || '—', copyable: true },
     { label: '端口数', value: d.portCount != null ? `${d.portCount}口` : '—' },
     { label: '上联口', value: d.uplinkPort || '—' },
     { label: '固件版本', value: d.firmwareVersion || '—' },
@@ -463,5 +500,19 @@ async function handleDeleteLink(row: any) {
   font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.drawer-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.drawer-copy-btn {
+  padding: 0;
+  min-height: auto;
+  color: var(--text-secondary);
+}
+.drawer-copy-btn:hover {
+  color: var(--color-primary);
 }
 </style>

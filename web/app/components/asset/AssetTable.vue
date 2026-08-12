@@ -18,6 +18,14 @@
         <template v-else-if="col.type === 'status'" #default="{ row }">
           <el-tag :type="getAssetStatusTagType(String(row[col.key]))" size="small">{{ row[col.key] }}</el-tag>
         </template>
+        <template v-else-if="col.copyable" #default="{ row }">
+          <span class="copyable-cell">
+            <span class="copyable-cell__text">{{ row[col.key] || '—' }}</span>
+            <el-button v-if="row[col.key]" class="copyable-cell__btn" text size="small" :aria-label="`复制${col.label}`" @click.stop="handleCopy(String(row[col.key]), col.label)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
+        </template>
       </el-table-column>
       <el-table-column v-if="canEdit" label="操作" :width="actionWidth" fixed="right" align="center" class-name="col-action">
         <template #default="{ row }">
@@ -46,8 +54,10 @@
 </template>
 
 <script setup lang="ts" generic="T extends Record<string, any>">
+import { CopyDocument } from '@element-plus/icons-vue'
 import { getAssetStatusTagType } from '~/utils/asset-utils'
 import type { AssetOptionValue } from '~/utils/asset-utils'
+import { useClipboard } from '~/composables/useClipboard'
 
 /** 列公共配置 */
 export interface AssetColumnBase {
@@ -57,6 +67,7 @@ export interface AssetColumnBase {
   align?: 'left' | 'center' | 'right'
   type?: 'status'   // status 列自动渲染统一状态标签
   slot?: string     // 自定义 slot 名（slot 渲染时用）
+  copyable?: boolean // 可复制列：自动渲染复制图标（不依赖 canEdit）
 }
 
 /** 表格列配置：数据列 key 与模型关联；虚拟列（组合/自定义）显式声明 virtual */
@@ -101,6 +112,12 @@ function handlePageChange(page: number, size: number) {
   emit('page-change', page, size)
 }
 
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function handleCopy(text: string, label: string) {
+  copy(text, label)
+}
+
 /** 行点击：rowClickable 时触发；操作列点击不误触发（通过 col-action class 标识，不依赖中文文案） */
 function onRowClick(row: T, _column: any, event: Event) {
   if (!props.rowClickable) return
@@ -118,4 +135,18 @@ function onRowClick(row: T, _column: any, event: Event) {
 }
 .asset-table__error { margin-bottom: var(--spacing-card); }
 .asset-table--clickable :deep(.el-table__row) { cursor: pointer; }
+
+.copyable-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.copyable-cell__btn {
+  padding: 0;
+  min-height: auto;
+  color: var(--text-secondary);
+}
+.copyable-cell__btn:hover {
+  color: var(--color-primary);
+}
 </style>
