@@ -303,3 +303,32 @@ body {
 .dropdown-icon--credential { color: var(--action-credential-bg); }
 .dropdown-icon--external { color: var(--action-external-bg); }
 .dropdown-icon--info { color: var(--action-info-fg); }
+
+/* —— ElMessageBox Teleport 场景：全局命名空间样式 —— */
+/* ElMessageBox 通过 Teleport 渲染到 body，组件 scoped 样式无法覆盖 */
+
+/* 清除确认弹窗：提升 z-index，覆盖在 ElDialog 之上 */
+/* Element Plus 2.x overlay class 为 .el-overlay.is-message-box（非 .el-overlay-message-box） */
+.el-overlay.is-message-box {
+  z-index: 9999 !important;
+}
+/* 确定清除按钮：使用现有 action danger Token，不硬编码色值 */
+.btn-danger-confirm {
+  background-color: var(--action-danger-bg) !important;
+  border-color: var(--action-danger-border) !important;
+  color: var(--action-danger-fg) !important;
+}
+.btn-danger-confirm:hover {
+  background-color: var(--action-danger-hover-bg) !important;
+  border-color: var(--action-danger-hover-border) !important;
+}
+.btn-danger-confirm:active {
+  background-color: var(--action-danger-active-bg) !important;
+  border-color: var(--action-danger-active-border) !important;
+}
+/* 兜底：customClass 生效时，覆盖确认按钮默认 primary 色 */
+.credential-clear-confirm .el-message-box__btns .el-button--primary {
+  background-color: var(--action-danger-bg) !important;
+  border-color: var(--action-danger-border) !important;
+  color: var(--action-danger-fg) !important;
+}

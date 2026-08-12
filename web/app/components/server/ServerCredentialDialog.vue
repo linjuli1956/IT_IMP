@@ -126,7 +126,13 @@ async function handleClear() {
     await ElMessageBox.confirm(
       `确定要清除服务器「${props.serverName}」的所有已保存凭据吗？此操作不可撤销。`,
       '清除凭据确认',
-      { confirmButtonText: '确定清除', cancelButtonText: '取消', type: 'warning' },
+      {
+        confirmButtonText: '确定清除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'btn-danger-confirm',
+        customClass: 'credential-clear-confirm',
+      },
     )
     await updateServerPassword(props.serverId, { password: '', dbPassword: '' })
     ElMessage.success('已清除所有凭据')
