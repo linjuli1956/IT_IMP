@@ -6,6 +6,10 @@
       :description="`管理门店电子称（量程/精度/校准），按门店归属。校准提醒以「下次校准日期」为准。仅管理员与操作员可编辑。`"
     >
       <template #actions>
+        <el-button v-if="canEdit" @click="handleExportCsv">
+          <el-icon><Download /></el-icon>
+          导出当前页 CSV
+        </el-button>
         <el-button v-if="canEdit" type="primary" @click="openAdd">
           <el-icon><Plus /></el-icon>
           新增电子称
@@ -32,7 +36,9 @@
         :page-size="pageSize"
         :error="error"
         :can-edit="canEdit"
+        :row-clickable="true"
         @page-change="handlePageChange"
+        @row-click="(row: any) => openDrawer(row)"
         @edit="(row: any) => handleEdit(row)"
         @delete="(row: any) => handleDelete(row)"
       >
@@ -58,18 +64,42 @@
       :saving="saving"
       @submit="handleSubmit"
     />
+
+    <!-- 详情抽屉 -->
+    <AssetDetailDrawer v-model="drawerVisible" :title="drawerTitle" :can-edit="canEdit">
+      <template #header>
+        <span class="drawer-id">{{ currentRow?.storeName || '—' }}</span>
+        <el-tag :type="getAssetStatusTagType(currentRow?.status || '')" size="small">{{ currentRow?.status }}</el-tag>
+      </template>
+      <el-descriptions v-if="currentRow" :column="2" border size="small">
+        <el-descriptions-item v-for="f in drawerItems" :key="f.label" :label="f.label" :span="f.span || 1">
+          <span class="drawer-field">
+            {{ f.value }}
+            <el-button v-if="f.copyable && f.value !== '—'" class="drawer-copy-btn" text size="small" :aria-label="`复制${f.label}`" @click="copyField(f.value, f.label)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
+        </el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="drawerVisible = false">关闭</el-button>
+        <el-button v-if="canEdit" type="primary" @click="handleEditFromDrawer">编辑</el-button>
+        <el-button v-if="canEdit" type="danger" @click="handleDeleteFromDrawer">删除</el-button>
+      </template>
+    </AssetDetailDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, CopyDocument, Download } from '@element-plus/icons-vue'
 import { useScaleData, scaleInterfaceOptions, scaleCalibrationOptions } from '~/composables/useScaleData'
 import { useStoreData } from '~/composables/useStoreData'
 import { getApiErrorMessage } from '~/composables/useApi'
 import { buildScalePreviewRows } from '~/utils/preview-utils'
-import { assetStatusOptions } from '~/utils/asset-utils'
-import { getCalibrationInfo } from '~/utils/asset-utils'
+import { assetStatusOptions, getAssetStatusTagType, getCalibrationInfo } from '~/utils/asset-utils'
+import { useClipboard } from '~/composables/useClipboard'
+import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { AssetFilterField, AssetFilterOption } from '~/components/asset/AssetFilters.vue'
 import type { AssetFieldConfig } from '~/components/asset/AssetFormDialog.vue'
 import type { AssetColumn } from '~/components/asset/AssetTable.vue'
@@ -126,12 +156,12 @@ function handlePageChange(p: number, s: number) {
 const columns: AssetColumn<ScaleItem>[] = [
   { virtual: true, key: 'name', label: '名称', minWidth: 170, slot: 'name' },
   { key: 'storeName', label: '门店', width: 130, slot: 'storeName' },
-  { key: 'assetNo', label: '资产编号', width: 110 },
+  { key: 'assetNo', label: '资产编号', width: 110, copyable: true },
   { key: 'capacityKg', label: '量程(kg)', width: 90, align: 'center' as const },
   { key: 'precisionG', label: '精度(g)', width: 90, align: 'center' as const },
   { key: 'interface', label: '接口', width: 90, align: 'center' as const },
   { virtual: true, key: 'nextCalibrationDate', label: '下次校准', width: 130, align: 'center' as const, slot: 'nextCalibrationDate' },
-  { key: 'installLocation', label: '位置', minWidth: 120 },
+  { key: 'installLocation', label: '位置', minWidth: 120, copyable: true },
   { key: 'status', label: '状态', width: 80, align: 'center' as const, type: 'status' as const },
 ]
 
@@ -213,7 +243,82 @@ async function handleDelete(row: ScaleItem) {
     if (e !== 'cancel') ElMessage.error(getApiErrorMessage(e))
   }
 }
+
+// —— 详情抽屉 ——
+const drawerVisible = ref(false)
+const currentRow = ref<ScaleItem | null>(null)
+function openDrawer(row: ScaleItem) {
+  currentRow.value = row
+  drawerVisible.value = true
+}
+function handleEditFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleEdit(currentRow.value)
+  }
+}
+function handleDeleteFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleDelete(currentRow.value)
+  }
+}
+const drawerTitle = computed(() => {
+  if (!currentRow.value) return '电子称详情'
+  return formatName(currentRow.value)
+})
+const drawerItems = computed<{ label: string; value: string; span?: number; copyable?: boolean }[]>(() => {
+  const r = currentRow.value
+  if (!r) return []
+  const calInfo = getCalibrationInfo(r.nextCalibrationDate, r.status)
+  return [
+    { label: '名称', value: formatName(r), copyable: true },
+    { label: '门店', value: r.storeName || '—' },
+    { label: '资产编号', value: r.assetNo || '—', copyable: true },
+    { label: '序列号', value: r.serialNo || '—', copyable: true },
+    { label: '品牌', value: r.brand || '—', copyable: true },
+    { label: '型号', value: r.model || '—', copyable: true },
+    { label: '量程(kg)', value: r.capacityKg != null ? String(r.capacityKg) : '—' },
+    { label: '精度(g)', value: r.precisionG != null ? String(r.precisionG) : '—' },
+    { label: '接口', value: r.interface || '—' },
+    { label: '校准状态', value: calInfo.label },
+    { label: '上次校准', value: r.lastCalibrationDate || '—' },
+    { label: '下次校准', value: r.nextCalibrationDate || '—' },
+    { label: '校准周期(天)', value: r.calibrationCycleDays != null ? String(r.calibrationCycleDays) : '—' },
+    { label: '安装位置', value: r.installLocation || '—', copyable: true },
+    { label: '状态', value: r.status },
+    { label: '备注', value: r.remark || '—', span: 2 },
+  ]
+})
+
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function copyField(value: string, label: string) {
+  copy(value, label)
+}
+
+// — 导出当前页 CSV（UTF-8 BOM，仅白名单列，不新增 API）—
+const csvColumns: CsvColumn<ScaleItem>[] = [
+  { prop: 'brand', label: '品牌' },
+  { prop: 'model', label: '型号' },
+  { prop: 'assetNo', label: '资产编号' },
+  { prop: 'serialNo', label: '序列号' },
+  { prop: 'installLocation', label: '位置' },
+]
+function handleExportCsv() {
+  if (scaleList.value.length === 0) {
+    ElMessage.warning('当前页无数据可导出')
+    return
+  }
+  exportCurrentPageCsv('电子称台账', csvColumns, scaleList.value)
+  ElMessage.success(`已导出当前页 ${scaleList.value.length} 条数据`)
+}
 </script>
 
 <style scoped>
+.filter-bar { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-card); }
+.drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
+.drawer-field { display: inline-flex; align-items: center; gap: 4px; }
+.drawer-copy-btn { padding: 0; min-height: auto; color: var(--text-secondary); }
+.drawer-copy-btn:hover { color: var(--color-primary); }
 </style>
