@@ -18,7 +18,7 @@
  *   - 通过 Canvas 像素扫描找到节点圆心坐标，精确点击
  *   - 服务器 Drawer Footer "更多" 在 AssetDetailDrawer 底部 .action-text--info
  *   - 凭据 Dialog 的"更多"在 el-dialog footer，下拉项 teleport 到 body
- *   - 查看者态通过修改 localStorage role 为"查看者"模拟（token 不变）
+ *   - 查看者态使用真实 viewer_test 账户登录（JWT token 携带 role=查看者）
  */
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -54,19 +54,6 @@ async function login(page, username = 'admin', password = '123456') {
   if (!result.success) throw new Error('Login failed: ' + result.error);
   console.log(`  登录(${username}): 成功 role=${result.user.role}`);
   return result.user;
-}
-
-/** 将 localStorage role 改为查看者（token 不变，仅前端 UI 层面） */
-async function switchToViewer(page) {
-  await page.evaluate(() => {
-    const raw = localStorage.getItem('user_info');
-    if (raw) {
-      const u = JSON.parse(raw);
-      u.role = '查看者';
-      localStorage.setItem('user_info', JSON.stringify(u));
-    }
-  });
-  console.log('  切换查看者角色 (localStorage)');
 }
 
 /** 截图并记录文件大小 */
@@ -463,17 +450,28 @@ async function run() {
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
-    await login(page);
-    await switchToViewer(page);
+    await login(page, 'viewer_test', '123456');
     await page.goto(`${BASE}/it/network-devices`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
+
+    // 断言页面身份显示为查看者（非系统管理员）
+    const uname = await page.evaluate(() => {
+      const el = document.querySelector('.username');
+      return el ? el.textContent.trim() : '';
+    });
+    if (!uname.includes('查看者')) {
+      throw new Error(`断言失败: 页面身份应为查看者，实际为"${uname}"`);
+    }
+    console.log(`  断言通过: 页面身份=${uname}`);
 
     await assertExists(page, '.copyable-cell__btn', '查看者复制图标可见');
     await assertNoBtnText(page, '导出当前页 CSV', '查看者无导出按钮');
     await assertNoBtnText(page, '新增设备', '查看者无新增按钮');
+    await assertNoBtnText(page, '编辑', '查看者无编辑按钮');
+    await assertNoBtnText(page, '删除', '查看者无删除按钮');
 
     const r = await shot(page, '04-network-devices-1366-viewer.png', '网络设备 1366×768 查看者态');
-    results.push({ ...r, ok: true, verified: 'copyable-cell__btn存在, 无导出/新增按钮' });
+    results.push({ ...r, ok: true, verified: '身份=查看者, copyable-cell__btn存在, 无导出/新增/编辑/删除按钮' });
     await ctx.close();
   }
 
@@ -642,10 +640,19 @@ async function run() {
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
-    await login(page);
-    await switchToViewer(page);
+    await login(page, 'viewer_test', '123456');
     await page.goto(`${BASE}/it/domains`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
+
+    // 断言页面身份显示为查看者（非系统管理员）
+    const uname = await page.evaluate(() => {
+      const el = document.querySelector('.username');
+      return el ? el.textContent.trim() : '';
+    });
+    if (!uname.includes('查看者')) {
+      throw new Error(`断言失败: 页面身份应为查看者，实际为"${uname}"`);
+    }
+    console.log(`  断言通过: 页面身份=${uname}`);
 
     // 确保卡片视图
     await page.evaluate(() => {
@@ -659,6 +666,8 @@ async function run() {
     await assertNotExists(page, '.service-card__actions', '查看者无编辑/删除按钮');
     await assertNoBtnText(page, '导出当前页 CSV', '查看者无导出按钮');
     await assertNoBtnText(page, '新增域名', '查看者无新增按钮');
+    await assertNoBtnText(page, '编辑', '查看者无编辑按钮');
+    await assertNoBtnText(page, '删除', '查看者无删除按钮');
 
     // 点击卡片打开 Drawer，确认域名复制按钮仍可用
     const card = await page.$('.service-card');
@@ -669,7 +678,7 @@ async function run() {
     }
 
     const r = await shot(page, '09-domains-1366-viewer.png', '域名管理 1366×768 查看者态');
-    results.push({ ...r, ok: true, verified: 'service-card存在, 无actions/导出/新增, drawer-copy-btn可用' });
+    results.push({ ...r, ok: true, verified: '身份=查看者, service-card存在, 无actions/导出/新增/编辑/删除, drawer-copy-btn可用' });
     await ctx.close();
   }
 
