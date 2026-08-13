@@ -3,7 +3,7 @@
   设计依据：docs/IT资产页面分型与交互规范.md §5.1 / §6.6 / §6.7
   v0.2 决策 3：编辑平铺为文字按钮，删除为红色文字操作，不保留只有编辑/删除的更多菜单
   - 点击卡片 → 打开 AssetDetailDrawer（emit click）
-  - 右上角平铺编辑+删除文字按钮，@click.stop 不误开抽屉
+  - 右上角平铺编辑+删除文字按钮，@click.stop + @keydown.enter/space.stop 阻止误开抽屉
   - 敏感字段不传入本组件，仅在抽屉按需显示
   - 复用 token，禁止硬编码颜色
 -->
@@ -25,8 +25,8 @@
         <span v-if="subtitle" class="service-card__subtitle">{{ subtitle }}</span>
       </div>
       <div v-if="canEdit" class="service-card__actions">
-        <el-button text size="small" :aria-label="`编辑 ${title}`" @click.stop="emit('edit')">编辑</el-button>
-        <el-button text size="small" type="danger" :aria-label="`删除 ${title}`" @click.stop="emit('delete')">删除</el-button>
+        <el-button text size="small" :aria-label="`编辑 ${title}`" @click.stop="emit('edit')" @keydown.enter.stop @keydown.space.stop>编辑</el-button>
+        <el-button text size="small" type="danger" :aria-label="`删除 ${title}`" @click.stop="emit('delete')" @keydown.enter.stop @keydown.space.stop>删除</el-button>
       </div>
     </div>
 

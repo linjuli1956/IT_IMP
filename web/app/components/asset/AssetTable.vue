@@ -20,8 +20,8 @@
         </template>
         <template v-else-if="col.copyable" #default="{ row }">
           <span class="copyable-cell">
-            <span class="copyable-cell__text">{{ row[col.key] || '—' }}</span>
-            <el-button v-if="row[col.key]" class="copyable-cell__btn" text size="small" :aria-label="`复制${col.label}`" @click.stop="handleCopy(String(row[col.key]), col.label)">
+            <span class="copyable-cell__text">{{ row[col.key] != null && row[col.key] !== '' ? row[col.key] : '—' }}</span>
+            <el-button v-if="row[col.key] != null && row[col.key] !== ''" class="copyable-cell__btn" text size="small" :aria-label="`复制${col.label}`" @click.stop="handleCopy(String(row[col.key]), col.label)">
               <el-icon><CopyDocument /></el-icon>
             </el-button>
           </span>

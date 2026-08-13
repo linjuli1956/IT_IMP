@@ -35,9 +35,13 @@ export function useClipboard() {
       textarea.style.opacity = '0'
       document.body.appendChild(textarea)
       textarea.select()
-      document.execCommand('copy')
+      const ok = document.execCommand('copy')
       document.body.removeChild(textarea)
-      ElMessage.success(label ? `已复制${label}` : '已复制到剪贴板')
+      if (ok) {
+        ElMessage.success(label ? `已复制${label}` : '已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动选择文本复制')
+      }
     } catch {
       ElMessage.error('复制失败，请手动选择文本复制')
     }
