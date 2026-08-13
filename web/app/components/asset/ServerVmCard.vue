@@ -4,7 +4,7 @@
     :class="[serverToneClass(server), { 'is-selected': isSelected }]"
     @click="$emit('click', server)"
   >
-    <!-- 头部：名称(hover预览) → 平台 Tag → 虚拟机 Tag → 状态 Tag → 编辑/更多 -->
+    <!-- 头部：名称(hover预览) → 平台 Tag → 虚拟机 Tag → 状态 Tag → 编辑/删除 -->
     <div class="card-header">
       <RecordPreviewTooltip :rows="previewRows" :title="server.name" placement="bottom" :max-rows="7" :max-width="360" variant="light">
         <template #reference>
@@ -14,16 +14,9 @@
       <span v-if="tone.platform" class="platform-tag" :class="tone.platform === 'PVE' ? 'platform-tag--pve' : 'platform-tag--esxi'">{{ tone.platform }}</span>
       <el-tag size="small" type="warning" effect="light">虚拟机</el-tag>
       <el-tag :type="statusTagType" size="small" effect="light">{{ server.status }}</el-tag>
-      <div v-if="canEdit" class="card-actions" @click.stop>
-        <el-button size="small" @click="$emit('edit', server)">编辑</el-button>
-        <el-dropdown trigger="click" @command="(cmd: string) => cmd === 'delete' && $emit('delete', server)">
-          <el-button size="small" text>更多<el-icon><ArrowDown /></el-icon></el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="delete" style="color: var(--color-danger)">删除</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+      <div v-if="canEdit" class="card-actions" @click.stop @keydown.enter.stop @keydown.space.stop>
+        <button class="action-text action-text--primary" @click="$emit('edit', server)">编辑</button>
+        <button class="action-text action-text--danger" @click="$emit('delete', server)">删除</button>
       </div>
     </div>
 
@@ -60,7 +53,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Monitor, Connection, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
+import { Monitor, Connection, ArrowRight } from '@element-plus/icons-vue'
 import type { ServerListItem } from '~/types/server'
 import { serverVisualTone, serverToneClass } from '~/utils/server-visual-tone'
 import { buildVmPreviewRows } from '~/utils/server-preview'

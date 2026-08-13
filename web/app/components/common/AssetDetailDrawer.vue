@@ -93,6 +93,7 @@ onBeforeUnmount(() => {
 .drawer-footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--drawer-footer-gap);
   padding-top: var(--spacing-card);
   border-top: 1px solid var(--border-lighter);

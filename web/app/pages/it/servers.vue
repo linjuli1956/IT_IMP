@@ -273,25 +273,13 @@
         <el-empty v-else description="未关联宿主机" :image-size="40" />
       </template>
 
-      <!-- 底部操作区 -->
+      <!-- 底部操作区（平铺，flex-wrap 允许低频操作换行） -->
       <template #footer>
         <ActionButton variant="close" size="small" @click="drawerVisible = false">关闭</ActionButton>
         <ActionButton v-if="canEdit" variant="primary" size="small" :icon="Edit" @click="handleEdit(selectedServer!)">编辑</ActionButton>
         <ActionButton v-if="selectedServer && manageUrlOf(selectedServer)" variant="external" size="small" :href="manageUrlOf(selectedServer!)!">进入管理</ActionButton>
-        <el-dropdown v-if="canEdit" trigger="click" @command="handleFooterAction">
-          <button type="button" class="action-text action-text--info">更多<el-icon class="action-text__caret"><ArrowDown /></el-icon></button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="credential">
-                <el-icon class="dropdown-icon dropdown-icon--credential"><Lock /></el-icon>服务器凭据（可选）
-              </el-dropdown-item>
-              <el-dropdown-item command="detail">
-                <el-icon class="dropdown-icon dropdown-icon--info"><View /></el-icon>打开详情页
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <ActionButton v-else variant="info" size="small" @click="goDetail(selectedServer!.id)">打开详情页</ActionButton>
+        <button v-if="canEdit" class="action-text action-text--credential" @click="openPasswordDialog(selectedServer!)">服务器凭据</button>
+        <button class="action-text action-text--info" @click="goDetail(selectedServer!.id)">打开详情页</button>
       </template>
     </AssetDetailDrawer>
 
@@ -880,7 +868,7 @@ function openPasswordDialog(row: any) {
   credDialogVisible.value = true
 }
 
-// —— 行操作“更多”下拉 + Drawer footer 操作 ——
+// —— 行操作“更多”下拉（表格树形模式仍保留）——
 function handleRowAction(cmd: string, row: ServerListItem) {
   switch (cmd) {
     case 'password': openPasswordDialog(row); break
@@ -890,14 +878,6 @@ function handleRowAction(cmd: string, row: ServerListItem) {
       break
     }
     case 'detail': goDetail(row.id); break
-  }
-}
-
-function handleFooterAction(cmd: string) {
-  if (cmd === 'detail' && selectedServer.value) {
-    goDetail(selectedServer.value.id)
-  } else if (cmd === 'credential' && selectedServer.value) {
-    openPasswordDialog(selectedServer.value)
   }
 }
 </script>
