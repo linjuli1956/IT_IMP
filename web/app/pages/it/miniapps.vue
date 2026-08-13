@@ -10,6 +10,10 @@
           <el-radio-button value="card">卡片总览</el-radio-button>
           <el-radio-button value="list">列表管理</el-radio-button>
         </el-radio-group>
+        <el-button v-if="canEdit" @click="handleExportCsv">
+          <el-icon><Download /></el-icon>
+          导出当前页 CSV
+        </el-button>
         <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增小程序
@@ -94,7 +98,14 @@
         <el-tag :type="getAssetStatusTagType(currentRow?.status || '')" size="small">{{ currentRow?.status }}</el-tag>
       </template>
       <el-descriptions v-if="currentRow" :column="2" border size="small">
-        <el-descriptions-item label="小程序名称">{{ currentRow.name }}</el-descriptions-item>
+        <el-descriptions-item label="小程序名称">
+          <span class="drawer-field">
+            {{ currentRow.name }}
+            <el-button class="drawer-copy-btn" text size="small" :aria-label="`复制小程序名称`" @click="copyField(currentRow.name, '小程序名称')">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
+        </el-descriptions-item>
         <el-descriptions-item label="状态">{{ currentRow.status }}</el-descriptions-item>
         <el-descriptions-item label="绑定邮箱">{{ currentRow.email || '—' }}</el-descriptions-item>
         <el-descriptions-item label="邮箱密码"><SensitiveValue :value="currentRow.emailPassword" /></el-descriptions-item>
@@ -138,11 +149,13 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Cellphone, CircleCheck, CircleClose, PieChart, Search } from '@element-plus/icons-vue'
+import { Plus, Cellphone, CircleCheck, CircleClose, PieChart, Search, CopyDocument, Download } from '@element-plus/icons-vue'
 import { useMiniappData, type MiniappItem } from '~/composables/useMiniappData'
 import { buildMiniappPreviewRows } from '~/utils/preview-utils'
 import { getAssetStatusTagType } from '~/utils/asset-utils'
 import { getApiErrorMessage } from '~/composables/useApi'
+import { useClipboard } from '~/composables/useClipboard'
+import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
 const { miniappList, loading, miniappStatusOptions, fetchMiniapps, addMiniapp, updateMiniapp, deleteMiniapp } = useMiniappData()
@@ -320,9 +333,10 @@ function handleBatchCopy(rows: MiniappItem[]) {
     ElMessage.warning('请先选择要复制的行')
     return
   }
-  const headers = ['小程序名称', '绑定邮箱', '状态', '备注']
+  // 邮箱为敏感字段，不纳入批量复制
+  const headers = ['小程序名称', '状态', '备注']
   const lines = rows.map(row => [
-    row.name, row.email, row.status, row.remark || '',
+    row.name, row.status, row.remark || '',
   ].join('\t'))
   const text = [headers.join('\t'), ...lines].join('\n')
   navigator.clipboard.writeText(text).then(() => {
@@ -330,6 +344,27 @@ function handleBatchCopy(rows: MiniappItem[]) {
   }).catch(() => {
     ElMessage.error('复制失败，请重试')
   })
+}
+
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function copyField(value: string, label: string) {
+  copy(value, label)
+}
+
+// — 导出当前页 CSV（UTF-8 BOM，排除敏感字段，不新增 API）—
+const csvColumns: CsvColumn<MiniappItem>[] = [
+  { prop: 'name', label: '小程序名称' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+function handleExportCsv() {
+  if (filteredMiniapps.value.length === 0) {
+    ElMessage.warning('当前页无数据可导出')
+    return
+  }
+  exportCurrentPageCsv('小程序台账', csvColumns, filteredMiniapps.value)
+  ElMessage.success(`已导出当前页 ${filteredMiniapps.value.length} 条数据`)
 }
 </script>
 
@@ -341,4 +376,7 @@ function handleBatchCopy(rows: MiniappItem[]) {
 .drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
 .view-switcher { margin-right: 8px; }
 .miniapp-name { color: var(--color-primary); font-weight: 500; cursor: pointer; }
+.drawer-field { display: inline-flex; align-items: center; gap: 4px; }
+.drawer-copy-btn { padding: 0; min-height: auto; color: var(--text-secondary); }
+.drawer-copy-btn:hover { color: var(--color-primary); }
 </style>
