@@ -10,15 +10,19 @@
  *
  * 运行方式：
  *   1. 启动服务：DATABASE_URL=mysql://... PORT=3999 node .output/server/index.mjs
- *   2. 执行截图：node scripts/screenshot-stage-c.cjs
- *   3. 输出目录：screenshots/stage-c/
+ *   2. 设置查看者账户环境变量（需由验收人员提供一个真实查看者账户）：
+ *      PowerShell:  $env:VIEWER_USERNAME="用户名"; $env:VIEWER_PASSWORD="密码"
+ *      Bash:         VIEWER_USERNAME=用户名 VIEWER_PASSWORD=密码
+ *   3. 执行截图：node scripts/screenshot-stage-c.cjs
+ *   4. 输出目录：screenshots/stage-c/
  *
  * 技术要点：
  *   - 网络设备 Drawer 仅从拓扑 Tab 点击节点打开（ECharts Canvas，力导向布局）
  *   - 通过 Canvas 像素扫描找到节点圆心坐标，精确点击
  *   - 服务器 Drawer Footer "更多" 在 AssetDetailDrawer 底部 .action-text--info
  *   - 凭据 Dialog 的"更多"在 el-dialog footer，下拉项 teleport 到 body
- *   - 查看者态使用真实 viewer_test 账户登录（JWT token 携带 role=查看者）
+ *   - 查看者态使用真实查看者账户登录（VIEWER_USERNAME / VIEWER_PASSWORD 环境变量）
+ *   - 脚本不创建、不删除用户；查看者账户需由验收人员提前在系统中准备
  */
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -29,6 +33,19 @@ const SHOT_DIR = path.join(__dirname, '..', '..', 'screenshots', 'stage-c');
 
 if (!fs.existsSync(SHOT_DIR)) {
   fs.mkdirSync(SHOT_DIR, { recursive: true });
+}
+
+// ——— 查看者账户（环境变量，不硬编码）——
+// 脚本不创建、不删除用户；查看者账户需由验收人员提前在系统中准备。
+const VIEWER_USERNAME = process.env.VIEWER_USERNAME;
+const VIEWER_PASSWORD = process.env.VIEWER_PASSWORD;
+
+if (!VIEWER_USERNAME || !VIEWER_PASSWORD) {
+  console.error('错误：查看者截图需要环境变量 VIEWER_USERNAME 和 VIEWER_PASSWORD。');
+  console.error('请由验收人员提供一个真实查看者账户（脚本不创建、不删除用户）：');
+  console.error('  PowerShell:  $env:VIEWER_USERNAME="用户名"; $env:VIEWER_PASSWORD="密码"; node scripts/screenshot-stage-c.cjs');
+  console.error('  Bash:         VIEWER_USERNAME=用户名 VIEWER_PASSWORD=密码 node scripts/screenshot-stage-c.cjs');
+  process.exit(1);
 }
 
 // ——— 工具函数 ———
@@ -450,7 +467,7 @@ async function run() {
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
-    await login(page, 'viewer_test', '123456');
+    await login(page, VIEWER_USERNAME, VIEWER_PASSWORD);
     await page.goto(`${BASE}/it/network-devices`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
@@ -640,7 +657,7 @@ async function run() {
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
-    await login(page, 'viewer_test', '123456');
+    await login(page, VIEWER_USERNAME, VIEWER_PASSWORD);
     await page.goto(`${BASE}/it/domains`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
