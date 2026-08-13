@@ -6,6 +6,10 @@
       :description="`管理门店/部门固话，按门店归属。固话号码本模块内唯一。仅管理员与操作员可编辑。`"
     >
       <template #actions>
+        <el-button v-if="canEdit" @click="handleExportCsv">
+          <el-icon><Download /></el-icon>
+          导出当前页 CSV
+        </el-button>
         <el-button v-if="canEdit" type="primary" @click="openAdd">
           <el-icon><Plus /></el-icon>
           新增固话
@@ -32,7 +36,9 @@
         :page-size="pageSize"
         :error="error"
         :can-edit="canEdit"
+        :row-clickable="true"
         @page-change="handlePageChange"
+        @row-click="(row: any) => openDrawer(row)"
         @edit="(row: any) => handleEdit(row)"
         @delete="(row: any) => handleDelete(row)"
       >
@@ -55,17 +61,42 @@
       :saving="saving"
       @submit="handleSubmit"
     />
+
+    <!-- 详情抽屉 -->
+    <AssetDetailDrawer v-model="drawerVisible" :title="drawerTitle" :can-edit="canEdit">
+      <template #header>
+        <span class="drawer-id">{{ currentRow?.storeName || '—' }}</span>
+        <el-tag :type="getAssetStatusTagType(currentRow?.status || '')" size="small">{{ currentRow?.status }}</el-tag>
+      </template>
+      <el-descriptions v-if="currentRow" :column="2" border size="small">
+        <el-descriptions-item v-for="f in drawerItems" :key="f.label" :label="f.label" :span="f.span || 1">
+          <span class="drawer-field">
+            {{ f.value }}
+            <el-button v-if="f.copyable && f.value !== '—'" class="drawer-copy-btn" text size="small" :aria-label="`复制${f.label}`" @click="copyField(f.value, f.label)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
+        </el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="drawerVisible = false">关闭</el-button>
+        <el-button v-if="canEdit" type="primary" @click="handleEditFromDrawer">编辑</el-button>
+        <el-button v-if="canEdit" type="danger" @click="handleDeleteFromDrawer">删除</el-button>
+      </template>
+    </AssetDetailDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, CopyDocument, Download } from '@element-plus/icons-vue'
 import { usePhoneData, phoneCarrierOptions } from '~/composables/usePhoneData'
 import { useStoreData } from '~/composables/useStoreData'
 import { getApiErrorMessage } from '~/composables/useApi'
-import { assetStatusOptions } from '~/utils/asset-utils'
+import { assetStatusOptions, getAssetStatusTagType } from '~/utils/asset-utils'
 import { buildPhonePreviewRows } from '~/utils/preview-utils'
+import { useClipboard } from '~/composables/useClipboard'
+import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { AssetFilterField, AssetFilterOption } from '~/components/asset/AssetFilters.vue'
 import type { AssetFieldConfig } from '~/components/asset/AssetFormDialog.vue'
 import type { AssetColumn } from '~/components/asset/AssetTable.vue'
@@ -118,11 +149,11 @@ function handlePageChange(p: number, s: number) {
 const columns: AssetColumn<PhoneItem>[] = [
   { virtual: true, key: 'phoneNumber', label: '固话号码', minWidth: 140, slot: 'phoneNumber' },
   { key: 'storeName', label: '门店', width: 130, slot: 'storeName' },
-  { key: 'department', label: '部门', width: 110 },
+  { key: 'department', label: '部门', width: 110, copyable: true },
   { key: 'carrier', label: '运营商', width: 90, align: 'center' as const },
   { key: 'user', label: '使用人', width: 100 },
-  { key: 'extension', label: '分机号', width: 90, align: 'center' as const },
-  { key: 'installLocation', label: '位置', minWidth: 120 },
+  { key: 'extension', label: '分机号', width: 90, align: 'center' as const, copyable: true },
+  { key: 'installLocation', label: '位置', minWidth: 120, copyable: true },
   { key: 'status', label: '状态', width: 80, align: 'center' as const, type: 'status' as const },
 ]
 
@@ -190,7 +221,76 @@ async function handleDelete(row: PhoneItem) {
     if (e !== 'cancel') ElMessage.error(getApiErrorMessage(e))
   }
 }
+
+// —— 详情抽屉 ——
+const drawerVisible = ref(false)
+const currentRow = ref<PhoneItem | null>(null)
+function openDrawer(row: PhoneItem) {
+  currentRow.value = row
+  drawerVisible.value = true
+}
+function handleEditFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleEdit(currentRow.value)
+  }
+}
+function handleDeleteFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleDelete(currentRow.value)
+  }
+}
+const drawerTitle = computed(() => {
+  if (!currentRow.value) return '固话详情'
+  return currentRow.value.phoneNumber
+})
+const drawerItems = computed<{ label: string; value: string; span?: number; copyable?: boolean }[]>(() => {
+  const r = currentRow.value
+  if (!r) return []
+  return [
+    { label: '固话号码', value: r.phoneNumber || '—', copyable: true },
+    { label: '门店', value: r.storeName || '—', copyable: true },
+    { label: '部门', value: r.department || '—', copyable: true },
+    { label: '运营商', value: r.carrier || '—' },
+    { label: '使用人', value: r.user || '—' },
+    { label: '分机号', value: r.extension || '—', copyable: true },
+    { label: '月租(元)', value: r.monthlyFee != null ? String(r.monthlyFee) : '—' },
+    { label: '套餐说明', value: r.packageInfo || '—' },
+    { label: '安装位置', value: r.installLocation || '—', copyable: true },
+    { label: '状态', value: r.status },
+    { label: '备注', value: r.remark || '—', span: 2 },
+  ]
+})
+
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function copyField(value: string, label: string) {
+  copy(value, label)
+}
+
+// — 导出当前页 CSV（UTF-8 BOM，仅白名单列，不新增 API）—
+const csvColumns: CsvColumn<PhoneItem>[] = [
+  { prop: 'phoneNumber', label: '固话号码' },
+  { prop: 'extension', label: '分机号' },
+  { prop: 'storeName', label: '门店' },
+  { prop: 'department', label: '部门' },
+  { prop: 'installLocation', label: '位置' },
+]
+function handleExportCsv() {
+  if (phoneList.value.length === 0) {
+    ElMessage.warning('当前页无数据可导出')
+    return
+  }
+  exportCurrentPageCsv('固话台账', csvColumns, phoneList.value)
+  ElMessage.success(`已导出当前页 ${phoneList.value.length} 条数据`)
+}
 </script>
 
 <style scoped>
+.filter-bar { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-card); }
+.drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
+.drawer-field { display: inline-flex; align-items: center; gap: 4px; }
+.drawer-copy-btn { padding: 0; min-height: auto; color: var(--text-secondary); }
+.drawer-copy-btn:hover { color: var(--color-primary); }
 </style>
