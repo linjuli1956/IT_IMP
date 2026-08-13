@@ -6,6 +6,10 @@
       :description="`管理门店电脑（配置+IP），按门店归属。资产编号/序列号/MAC 本模块内唯一。仅管理员与操作员可编辑。`"
     >
       <template #actions>
+        <el-button v-if="canEdit" @click="handleExportCsv">
+          <el-icon><Download /></el-icon>
+          导出当前页 CSV
+        </el-button>
         <el-button v-if="canEdit" type="primary" @click="openAdd">
           <el-icon><Plus /></el-icon>
           新增电脑
@@ -32,7 +36,9 @@
         :page-size="pageSize"
         :error="error"
         :can-edit="canEdit"
+        :row-clickable="true"
         @page-change="handlePageChange"
+        @row-click="(row: any) => openDrawer(row)"
         @edit="(row: any) => handleEdit(row)"
         @delete="(row: any) => handleDelete(row)"
       >
@@ -55,17 +61,42 @@
       :saving="saving"
       @submit="handleSubmit"
     />
+
+    <!-- 详情抽屉 -->
+    <AssetDetailDrawer v-model="drawerVisible" :title="drawerTitle" :can-edit="canEdit">
+      <template #header>
+        <span class="drawer-id">{{ currentRow?.storeName || '—' }}</span>
+        <el-tag :type="getAssetStatusTagType(currentRow?.status || '')" size="small">{{ currentRow?.status }}</el-tag>
+      </template>
+      <el-descriptions v-if="currentRow" :column="2" border size="small">
+        <el-descriptions-item v-for="f in drawerItems" :key="f.label" :label="f.label" :span="f.span || 1">
+          <span class="drawer-field">
+            {{ f.value }}
+            <el-button v-if="f.copyable && f.value !== '—'" class="drawer-copy-btn" text size="small" :aria-label="`复制${f.label}`" @click="copyField(f.value, f.label)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </span>
+        </el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="drawerVisible = false">关闭</el-button>
+        <el-button v-if="canEdit" type="primary" @click="handleEditFromDrawer">编辑</el-button>
+        <el-button v-if="canEdit" type="danger" @click="handleDeleteFromDrawer">删除</el-button>
+      </template>
+    </AssetDetailDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, CopyDocument, Download } from '@element-plus/icons-vue'
 import { useComputerData, computerDiskTypeOptions } from '~/composables/useComputerData'
 import { useStoreData } from '~/composables/useStoreData'
 import { getApiErrorMessage } from '~/composables/useApi'
-import { assetStatusOptions } from '~/utils/asset-utils'
+import { assetStatusOptions, getAssetStatusTagType } from '~/utils/asset-utils'
 import { buildComputerPreviewRows } from '~/utils/preview-utils'
+import { useClipboard } from '~/composables/useClipboard'
+import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { AssetFilterField, AssetFilterOption } from '~/components/asset/AssetFilters.vue'
 import type { AssetFieldConfig } from '~/components/asset/AssetFormDialog.vue'
 import type { AssetColumn } from '~/components/asset/AssetTable.vue'
@@ -113,10 +144,10 @@ function handlePageChange(p: number, s: number) {
 const columns: AssetColumn<ComputerItem>[] = [
   { virtual: true, key: 'name', label: '名称', minWidth: 170, slot: 'name' },
   { key: 'storeName', label: '门店', width: 130, slot: 'storeName' },
-  { key: 'assetNo', label: '资产编号', width: 110 },
+  { key: 'assetNo', label: '资产编号', width: 120, copyable: true },
   { key: 'user', label: '使用人', width: 90 },
   { key: 'department', label: '部门', width: 100 },
-  { key: 'ipAddress', label: 'IP', width: 120 },
+  { key: 'ipAddress', label: 'IP', width: 130, copyable: true },
   { key: 'os', label: '系统', width: 100 },
   { key: 'warrantyEndDate', label: '保修到期', width: 110, align: 'center' as const },
   { key: 'status', label: '状态', width: 80, align: 'center' as const, type: 'status' as const },
@@ -199,7 +230,83 @@ async function handleDelete(row: ComputerItem) {
     if (e !== 'cancel') ElMessage.error(getApiErrorMessage(e))
   }
 }
+
+// —— 详情抽屉 ——
+const drawerVisible = ref(false)
+const currentRow = ref<ComputerItem | null>(null)
+function openDrawer(row: ComputerItem) {
+  currentRow.value = row
+  drawerVisible.value = true
+}
+function handleEditFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleEdit(currentRow.value)
+  }
+}
+function handleDeleteFromDrawer() {
+  if (currentRow.value) {
+    drawerVisible.value = false
+    handleDelete(currentRow.value)
+  }
+}
+const drawerTitle = computed(() => {
+  if (!currentRow.value) return '电脑详情'
+  return formatName(currentRow.value)
+})
+const drawerItems = computed<{ label: string; value: string; span?: number; copyable?: boolean }[]>(() => {
+  const r = currentRow.value
+  if (!r) return []
+  return [
+    { label: '名称', value: formatName(r), copyable: true },
+    { label: '门店', value: r.storeName || '—' },
+    { label: '资产编号', value: r.assetNo || '—', copyable: true },
+    { label: '序列号', value: r.serialNo || '—', copyable: true },
+    { label: '品牌', value: r.brand || '—', copyable: true },
+    { label: '型号', value: r.model || '—', copyable: true },
+    { label: 'IP地址', value: r.ipAddress || '—', copyable: true },
+    { label: 'MAC地址', value: r.macAddress || '—', copyable: true },
+    { label: '使用人', value: r.user || '—' },
+    { label: '部门', value: r.department || '—' },
+    { label: '操作系统', value: [r.os, r.osVersion].filter(Boolean).join(' ') || '—' },
+    { label: 'CPU', value: r.cpuModel || '—' },
+    { label: '内存', value: r.memoryGB != null ? `${r.memoryGB}GB` : '—' },
+    { label: '硬盘', value: r.diskSizeGB != null ? `${r.diskSizeGB}GB` : '—' },
+    { label: '保修到期', value: r.warrantyEndDate || '—' },
+    { label: '状态', value: r.status },
+    { label: '备注', value: r.remark || '—', span: 2 },
+  ]
+})
+
+// — 复制（不依赖 canEdit，查看者可复制白名单字段）—
+const { copy } = useClipboard()
+function copyField(value: string, label: string) {
+  copy(value, label)
+}
+
+// — 导出当前页 CSV（UTF-8 BOM，仅白名单列，不新增 API）—
+const csvColumns: CsvColumn<ComputerItem>[] = [
+  { prop: 'assetNo', label: '资产编号' },
+  { prop: 'serialNo', label: '序列号' },
+  { prop: 'brand', label: '品牌' },
+  { prop: 'model', label: '型号' },
+  { prop: 'ipAddress', label: 'IP地址' },
+  { prop: 'macAddress', label: 'MAC地址' },
+]
+function handleExportCsv() {
+  if (computerList.value.length === 0) {
+    ElMessage.warning('当前页无数据可导出')
+    return
+  }
+  exportCurrentPageCsv('电脑台账', csvColumns, computerList.value)
+  ElMessage.success(`已导出当前页 ${computerList.value.length} 条数据`)
+}
 </script>
 
 <style scoped>
+.filter-bar { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-card); }
+.drawer-id { font-weight: 600; color: var(--text-primary); margin-right: 8px; }
+.drawer-field { display: inline-flex; align-items: center; gap: 4px; }
+.drawer-copy-btn { padding: 0; min-height: auto; color: var(--text-secondary); }
+.drawer-copy-btn:hover { color: var(--color-primary); }
 </style>
