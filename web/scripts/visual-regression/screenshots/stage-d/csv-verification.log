@@ -1,4 +1,4 @@
 [computers] filename=电脑台账.csv BOM=true headers="名称,资产编号,序列号,型号,IP地址,MAC地址" rows=1 OK
 [phones] filename=固话台账.csv BOM=true headers="固话号码,分机号,门店,部门,位置" rows=2 OK
 [scales] filename=电子称台账.csv BOM=true headers="名称,资产编号,序列号,型号,位置" rows=3 OK
-[miniapps] filename=小程序台账.csv BOM=true headers="小程序名称,状态,备注" rows=3 OK
+[miniapps] filename=小程序台账.csv BOM=true headers="小程序名称,状态,备注" rows=2 OK

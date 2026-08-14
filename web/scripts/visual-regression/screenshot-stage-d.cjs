@@ -10,6 +10,7 @@
  * 5. 小程序断言卡片态、列表态及平铺编辑/删除
  * 6. CSV 下载断言 BOM、文件名、当前页白名单列、敏感字段排除
  * 7. 每张截图目标状态未达成即失败，不得保存错误页面冒充通过
+ * 8. 数据质量断言：不允许出现 null/undefined；小程序卡片名称/副标题不允许为无业务意义测试值
  */
 const { chromium } = require('playwright')
 const { mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } = require('node:fs')
@@ -133,6 +134,40 @@ async function assertCardEditDelete(page, label) {
   assert(result.delete, `${label}: 卡片平铺删除按钮存在`)
 }
 
+// ===== Data quality assertions =====
+const DIRTY_VALUES = ['123', '333', '555', '111', '222', 'test', 'e2e']
+
+async function assertNoNullUndefined(page, label) {
+  const count = await page.evaluate(() => {
+    const sels = '.el-table .cell, .service-card__title, .service-card__subtitle, .el-descriptions__content, .el-descriptions__content-cell'
+    const els = document.querySelectorAll(sels)
+    let found = 0
+    for (const el of els) {
+      const text = (el.textContent || '').trim().toLowerCase()
+      if (text === 'null' || text === 'undefined') found++
+    }
+    return found
+  })
+  assert(count === 0, `${label}: 数据区域无 null/undefined（${count} 处）`)
+}
+
+async function assertNoCardTestValues(page, label) {
+  const issues = await page.evaluate((dirtyVals) => {
+    const cards = document.querySelectorAll('.service-card')
+    const problems = []
+    for (const card of cards) {
+      const titleEl = card.querySelector('.service-card__title')
+      const subtitleEl = card.querySelector('.service-card__subtitle')
+      const title = titleEl ? (titleEl.textContent || '').trim() : ''
+      const subtitle = subtitleEl ? (subtitleEl.textContent || '').trim() : ''
+      if (dirtyVals.includes(title)) problems.push(`标题="${title}"`)
+      if (dirtyVals.includes(subtitle)) problems.push(`副标题="${subtitle}"`)
+    }
+    return problems
+  }, DIRTY_VALUES)
+  assert(issues.length === 0, `${label}: 卡片名称/副标题无测试值（${issues.length} 处${issues.length > 0 ? ': ' + issues.join(', ') : ''}）`)
+}
+
 // ===== Login =====
 async function login(page, user, pass) {
   await page.goto(`${BASE_URL}/login`)
@@ -167,6 +202,7 @@ async function closeDrawer(page) {
 
 // ===== Screenshot with pre-assertion =====
 async function verifiedShot(page, name, assertFn) {
+  await assertNoNullUndefined(page, name)
   if (assertFn) await assertFn()
   const path = join(OUT_DIR, `${name}.png`)
   await page.screenshot({ path, fullPage: true })
@@ -315,6 +351,7 @@ async function adminFlow(browser) {
       const cards = await page.$$('.service-card')
       assert(cards.length > 0, `Miniapps 卡片视图: ${cards.length} 个卡片`)
       await assertCardEditDelete(page, 'Miniapps 卡片')
+      await assertNoCardTestValues(page, 'Miniapps 卡片视图')
     })
 
     // 卡片 Drawer
@@ -422,6 +459,7 @@ async function viewerFlow(browser) {
     await verifiedShot(page, `viewer-miniapps-${res.label}`, async () => {
       const cards = await page.$$('.service-card')
       assert(cards.length > 0, `Viewer Miniapps: ${cards.length} 个卡片`)
+      await assertNoCardTestValues(page, 'Viewer Miniapps 卡片')
       await assertButtonNotExists(page, '新增', 'Viewer Miniapps 无新增')
       await assertButtonNotExists(page, '导出', 'Viewer Miniapps 无导出')
       // 卡片不应有编辑/删除（canEdit=false）
