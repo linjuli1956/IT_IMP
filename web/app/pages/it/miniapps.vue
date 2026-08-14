@@ -328,22 +328,18 @@ async function handleBatchDelete(rows: MiniappItem[]) {
 }
 
 // —— 批量复制（Tab 分隔，可粘贴 Excel，排除敏感字段）——
-function handleBatchCopy(rows: MiniappItem[]) {
+async function handleBatchCopy(rows: MiniappItem[]) {
   if (rows.length === 0) {
     ElMessage.warning('请先选择要复制的行')
     return
   }
-  // 邮箱为敏感字段，不纳入批量复制
+  // 邮箱、密码等敏感字段不纳入批量复制
   const headers = ['小程序名称', '状态', '备注']
   const lines = rows.map(row => [
     row.name, row.status, row.remark || '',
   ].join('\t'))
   const text = [headers.join('\t'), ...lines].join('\n')
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success(`已复制 ${rows.length} 行数据（可粘贴到Excel）`)
-  }).catch(() => {
-    ElMessage.error('复制失败，请重试')
-  })
+  await copy(text, ` ${rows.length} 行数据（可粘贴到Excel）`)
 }
 
 // — 复制（不依赖 canEdit，查看者可复制白名单字段）—

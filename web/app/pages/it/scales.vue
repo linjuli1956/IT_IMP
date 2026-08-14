@@ -299,10 +299,10 @@ function copyField(value: string, label: string) {
 
 // — 导出当前页 CSV（UTF-8 BOM，仅白名单列，不新增 API）—
 const csvColumns: CsvColumn<ScaleItem>[] = [
-  { prop: 'brand', label: '品牌' },
-  { prop: 'model', label: '型号' },
+  { prop: 'brand', label: '名称', format: (r) => formatName(r) },
   { prop: 'assetNo', label: '资产编号' },
   { prop: 'serialNo', label: '序列号' },
+  { prop: 'model', label: '型号' },
   { prop: 'installLocation', label: '位置' },
 ]
 function handleExportCsv() {

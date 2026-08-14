@@ -12,6 +12,8 @@
 export interface CsvColumn<T> {
   prop: keyof T & string
   label: string
+  /** 可选：当列值由计算得出（如名称=品牌+型号），提供此函数覆盖 prop 直取 */
+  format?: (row: T) => string
 }
 
 /** UTF-8 BOM，确保中文 Excel 打开正常 */
@@ -54,7 +56,7 @@ export function serializeCsv<T extends Record<string, any>>(
 ): string {
   const header = columns.map(c => escapeCsvCell(c.label)).join(',')
   const rows = data.map(row =>
-    columns.map(c => escapeCsvCell(row[c.prop])).join(','),
+    columns.map(c => escapeCsvCell(c.format ? c.format(row) : row[c.prop])).join(','),
   )
   return CSV_BOM + [header, ...rows].join('\r\n')
 }
