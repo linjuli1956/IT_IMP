@@ -135,6 +135,7 @@ export function buildScalePreviewRows(row: ScaleItem): PreviewRow[] {
   return [
     { label: '资产编号', value: row.assetNo || '—' },
     { label: '门店', value: row.storeName || '—' },
+    { label: '秤号/IP', value: join([row.scaleNo, row.ipAddress]) },
     { label: '品牌/型号', value: join([row.brand, row.model]) },
     { label: '量程/精度', value: join([
       row.capacityKg != null ? `${row.capacityKg}kg` : null,

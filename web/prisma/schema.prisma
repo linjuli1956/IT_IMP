@@ -792,6 +792,10 @@ model Scale {
   nextCalibrationDate   DateTime? @db.Date
   /// 校准周期（天）
   calibrationCycleDays  Int?
+  /// 秤号（门店业务编号，如 01、生鲜03；同门店内唯一，不同门店可重复；NULL 不参与冲突）
+  scaleNo               String?  @db.VarChar(50)
+  /// IP地址（联网电子秤的 IPv4；RS232/USB 等非联网电子秤可不填）
+  ipAddress             String?  @db.VarChar(45)
   /// 安装位置（如 收银台3号）
   installLocation       String?  @db.VarChar(200)
   /// 状态：正常/停用/报废
@@ -806,6 +810,8 @@ model Scale {
   /// 所属门店
   store                 Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
 
+  /// 同门店秤号唯一（NULL 不参与冲突，MySQL InnoDB 行为）
+  @@unique([storeId, scaleNo])
   @@index([storeId])
   @@index([status])
   @@map("scales")

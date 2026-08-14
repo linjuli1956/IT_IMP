@@ -20,7 +20,7 @@
     <div class="card filter-bar">
       <AssetFilters
         :fields="filterFields"
-        :keyword="{ key: 'keyword', placeholder: '搜索品牌/型号/资产编号/位置' }"
+        :keyword="{ key: 'keyword', placeholder: '搜索品牌/型号/资产编号/秤号/IP/位置' }"
         :model="filters"
         @update="handleFilterChange"
       />
@@ -157,6 +157,8 @@ const columns: AssetColumn<ScaleItem>[] = [
   { virtual: true, key: 'name', label: '名称', minWidth: 170, slot: 'name' },
   { key: 'storeName', label: '门店', width: 130, slot: 'storeName' },
   { key: 'assetNo', label: '资产编号', width: 110, copyable: true },
+  { key: 'scaleNo', label: '秤号', width: 90, copyable: true },
+  { key: 'ipAddress', label: 'IP地址', width: 130, copyable: true },
   { key: 'capacityKg', label: '量程(kg)', width: 90, align: 'center' as const },
   { key: 'precisionG', label: '精度(g)', width: 90, align: 'center' as const },
   { key: 'interface', label: '接口', width: 90, align: 'center' as const },
@@ -173,6 +175,8 @@ const currentForm = ref<Partial<ScaleItem>>({})
 const formFields = computed<AssetFieldConfig<ScaleItem>[]>(() => [
   { key: 'storeId', label: '门店', type: 'select', required: true, options: storeIdOptions.value, width: 'half', placeholder: '选择门店' },
   { key: 'assetNo', label: '资产编号', type: 'input', width: 'half', placeholder: '留空提交为 NULL', normalize: (v) => (v ? String(v).trim() || null : null) },
+  { key: 'scaleNo', label: '秤号', type: 'input', width: 'half', placeholder: '如 01、生鲜03', normalize: (v) => (v ? String(v).trim() || null : null) },
+  { key: 'ipAddress', label: 'IP地址', type: 'input', width: 'half', placeholder: '如 192.168.1.100', normalize: (v) => (v ? String(v).trim() || null : null) },
   { key: 'brand', label: '品牌', type: 'input', width: 'half', placeholder: '寺冈/顶尖/大华等', normalize: (v) => (v ? String(v).trim() || null : null) },
   { key: 'model', label: '型号', type: 'input', width: 'half', normalize: (v) => (v ? String(v).trim() || null : null) },
   { key: 'serialNo', label: '序列号', type: 'input', width: 'half', placeholder: '留空提交为 NULL', normalize: (v) => (v ? String(v).trim() || null : null) },
@@ -275,6 +279,8 @@ const drawerItems = computed<{ label: string; value: string; span?: number; copy
     { label: '名称', value: formatName(r), copyable: true },
     { label: '门店', value: r.storeName || '—' },
     { label: '资产编号', value: r.assetNo || '—', copyable: true },
+    { label: '秤号', value: r.scaleNo || '—', copyable: true },
+    { label: 'IP地址', value: r.ipAddress || '—', copyable: true },
     { label: '序列号', value: r.serialNo || '—', copyable: true },
     { label: '品牌', value: r.brand || '—', copyable: true },
     { label: '型号', value: r.model || '—', copyable: true },
@@ -301,8 +307,10 @@ function copyField(value: string, label: string) {
 const csvColumns: CsvColumn<ScaleItem>[] = [
   { prop: 'brand', label: '名称', format: (r) => formatName(r) },
   { prop: 'assetNo', label: '资产编号' },
+  { prop: 'scaleNo', label: '秤号' },
   { prop: 'serialNo', label: '序列号' },
   { prop: 'model', label: '型号' },
+  { prop: 'ipAddress', label: 'IP地址' },
   { prop: 'installLocation', label: '位置' },
 ]
 function handleExportCsv() {

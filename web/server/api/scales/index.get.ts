@@ -53,6 +53,8 @@ export default defineEventHandler(async (event: H3Event) => {
       { brand: { contains: keyword } },
       { model: { contains: keyword } },
       { assetNo: { contains: keyword } },
+      { scaleNo: { contains: keyword } },
+      { ipAddress: { contains: keyword } },
       { installLocation: { contains: keyword } },
     ]
   }

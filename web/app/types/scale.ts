@@ -5,6 +5,8 @@ export interface ScaleItem {
   storeId: number
   storeName: string | null
   assetNo: string | null
+  scaleNo: string | null
+  ipAddress: string | null
   brand: string | null
   model: string | null
   serialNo: string | null

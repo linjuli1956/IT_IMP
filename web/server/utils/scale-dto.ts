@@ -11,13 +11,25 @@ export const SCALE_INTERFACES = ['RS232', 'USB', 'WiFi', '蓝牙'] as const
 
 /** 可更新字段白名单 */
 export const SCALE_FIELDS = [
-  'storeId', 'assetNo', 'brand', 'model', 'serialNo', 'capacityKg', 'precisionG',
+  'storeId', 'assetNo', 'brand', 'model', 'serialNo', 'scaleNo', 'ipAddress',
+  'capacityKg', 'precisionG',
   'interface', 'lastCalibrationDate', 'nextCalibrationDate', 'calibrationCycleDays',
   'installLocation', 'status', 'remark',
 ] as const
 
 /** 可空文本字段 */
-const NULLABLE_TEXT_FIELDS = new Set(['assetNo', 'brand', 'model', 'serialNo', 'interface', 'installLocation'])
+const NULLABLE_TEXT_FIELDS = new Set(['assetNo', 'brand', 'model', 'serialNo', 'scaleNo', 'installLocation'])
+
+/** 合法 IPv4 校验（四段 0-255，不接收前置零如 001） */
+function isValidIPv4(s: string): boolean {
+  const parts = s.split('.')
+  if (parts.length !== 4) return false
+  return parts.every(p => {
+    if (!/^(0|[1-9]\d{0,2})$/.test(p)) return false
+    const n = Number(p)
+    return n >= 0 && n <= 255
+  })
+}
 
 export interface ScaleFieldValidation {
   data: Record<string, unknown>
@@ -81,6 +93,14 @@ export function validateScaleFields(body: Record<string, unknown>): ScaleFieldVa
         data[key] = s
         break
       }
+      case 'ipAddress': {
+        const s = normalizeNullableText(value)
+        if (s === INVALID_VALUE) { errors.push('ipAddress 必须是字符串'); break }
+        if (s === null) { data[key] = null; break }
+        if (!isValidIPv4(s)) { errors.push('ipAddress 必须是合法 IPv4 地址（如 192.168.1.1）'); break }
+        data[key] = s
+        break
+      }
       case 'status': {
         const s = normalizeNullableText(value)
         if (s === INVALID_VALUE || s === null || !ASSET_STATUS_VALUES.includes(s as never)) {
@@ -130,7 +150,13 @@ export function serializeScale(s: Record<string, any>): Record<string, any> {
 /** 电子称 API 错误映射 */
 export function mapScaleApiError(error: unknown): { statusCode: number; message: string } | null {
   const code = (error as { code?: string })?.code
-  if (code === 'P2002') return { statusCode: 409, message: '资产编号/序列号与已有记录重复' }
+  if (code === 'P2002') {
+    const target = (error as { meta?: { target?: string[] } })?.meta?.target
+    if (target?.includes('scaleNo')) {
+      return { statusCode: 409, message: '该门店已存在相同秤号' }
+    }
+    return { statusCode: 409, message: '资产编号/序列号与已有记录重复' }
+  }
   if (code === 'P2003') return { statusCode: 409, message: '所选门店不存在' }
   if (code === 'P2025') return { statusCode: 404, message: '电子称记录不存在' }
   return null
