@@ -111,7 +111,7 @@ import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const { fetchBatchById, getBatchStatusText, getBatchStatusType, formatBatchNo } = useInvoiceData()
-const { getAccrualByBatchId } = useAccrualData()
+const { accrualList, fetchAccruals, getAccrualByBatchId } = useAccrualData()
 
 const batchId = Number(route.params.id)
 const batch = ref<any>(null)
@@ -132,6 +132,10 @@ onMounted(async () => {
   loading.value = true
   batch.value = await fetchBatchById(batchId)
   loading.value = false
+  // 计提列表未加载时补加载（existingAccrual 依赖内存列表，否则直接进入本页时“查看计提表”不显示）
+  if (!accrualList.value.length) {
+    await fetchAccruals()
+  }
 })
 
 // 检查是否已生成计提表

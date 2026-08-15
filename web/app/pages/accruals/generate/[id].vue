@@ -212,7 +212,7 @@ import { generateReimbursementText } from '~/utils/reimbursement'
 const route = useRoute()
 const batchId = Number(route.params.id)
 
-const { getBatchById, formatBatchNo, fetchBatchById } = useInvoiceData()
+const { batchList, getBatchById, formatBatchNo, fetchBatchById } = useInvoiceData()
 const { findByCarrierStore, findByCarrierStoreOrDept, filterItemsByStore, findByCarrier, templateList, fetchTemplates } = useTemplateData()
 const { detailList, getDetailById, findByCarrierMonth, fetchDetails } = useDetailData()
 const { generateAccrual } = useAccrualData()
@@ -720,7 +720,11 @@ onMounted(async () => {
   }
   // 确保批次、模板、明细表数据已加载
   if (!getBatchById(batchId)) {
-    await fetchBatchById(batchId)
+    // fetchBatchById 仅返回结果不同步列表，直接进入本页时补写入（batch computed 依赖内存列表）
+    const fetched = await fetchBatchById(batchId)
+    if (fetched && !getBatchById(batchId)) {
+      batchList.value.push(fetched)
+    }
   }
   if (templateList.value.length === 0) {
     await fetchTemplates()
