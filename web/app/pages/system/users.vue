@@ -6,7 +6,7 @@
       :description="`角色分为管理员（全部权限）、操作员（日常操作）、查看者（只读）。默认管理员 admin 不可删除/重置密码；新增用户默认密码 123456，可通过「重置密码」恢复。`"
     >
       <template #actions>
-        <el-button v-if="canEdit" type="primary" @click="handleAdd">
+        <el-button v-if="canManageUsers" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增用户
         </el-button>
@@ -29,8 +29,8 @@
         :columns="columns"
         :data="filteredUserList"
         :loading="tableLoading"
-        :show-selection="canEdit"
-        :show-actions="canEdit"
+        :show-selection="canManageUsers"
+        :show-actions="canManageUsers"
         :action-width="140"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
@@ -41,7 +41,7 @@
         <template #status="{ row }">
           <el-switch
             :model-value="row.status === 1"
-            :disabled="row.username === 'admin' || statusLoadingId === row.id"
+            :disabled="!canManageUsers || row.username === 'admin' || statusLoadingId === row.id"
             @change="(val) => toggleStatus(row, !!val)"
           />
         </template>
@@ -100,7 +100,7 @@ import { useApi, getApiErrorMessage } from '~/composables/useApi'
 
 const api = useApi()
 
-const canEdit = ref(false)
+const canManageUsers = ref(false)
 
 // —— 表格列定义 ——
 const columns = [
@@ -179,8 +179,8 @@ onMounted(() => {
   if (rawUser) {
     try {
       const role = JSON.parse(rawUser).role
-      canEdit.value = role === '管理员' || role === '操作员'
-    } catch { canEdit.value = false }
+      canManageUsers.value = role === '管理员'
+    } catch { canManageUsers.value = false }
   }
   fetchUsers()
 })
@@ -290,6 +290,7 @@ async function handleBatchDelete(rows: User[]) {
 const statusLoadingId = ref<number | null>(null)
 
 async function toggleStatus(row: any, val: boolean) {
+  if (!canManageUsers.value) return
   const user = row as User
   statusLoadingId.value = user.id
   try {
