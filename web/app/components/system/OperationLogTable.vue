@@ -32,7 +32,10 @@ function getActionTagType(action: string): TagType {
 
 <template>
   <div class="card">
-    <el-table :data="logs" :loading="loading" border stripe size="default">
+    <el-table :data="logs" v-loading="loading" border stripe size="default">
+      <template #empty>
+        <EmptyState description="暂无操作日志" />
+      </template>
       <el-table-column prop="time" label="操作时间" width="180" />
       <el-table-column prop="username" label="用户" width="110" />
       <el-table-column prop="action" label="操作类型" width="100" align="center">

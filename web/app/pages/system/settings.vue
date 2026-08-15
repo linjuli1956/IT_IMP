@@ -7,6 +7,7 @@
     />
 
     <div class="card">
+      <div class="section-title">财年配置</div>
       <el-form label-width="120px" class="settings-form">
         <el-form-item label="财年起始月">
           <div class="setting-field">
