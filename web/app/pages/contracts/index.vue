@@ -5,7 +5,7 @@
       subtitle="客户合同与到期提醒"
       description="管理与客户签订的各类合同（宽带/设备采购/项目/采购/维保）。上传合同PDF附件，支持拖拽上传。到期提醒：30天内标橙色，7天内标红色，首页仪表盘同步展示。点击文件名可查看已上传的合同文件。"
     >
-      <template #actions>
+      <template v-if="canWrite" #actions>
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增合同
@@ -26,17 +26,24 @@
       <el-input v-model="filterKeyword" placeholder="搜索标题/客户" clearable style="width: 220px" />
     </div>
 
-    <!-- 列表 -->
+    <!-- 列表（空表格与 EmptyState 互斥） -->
     <div class="card" v-loading="loading">
       <CrudTable
+        v-if="loading || filteredContracts.length > 0"
         :columns="columns"
         :data="filteredContracts"
-        @edit="handleEdit"
-        @delete="handleDelete"
+        :show-selection="canWrite"
+        :show-batch-delete="canWrite"
+        :show-actions="canWrite"
+        :action-width="130"
         @batch-delete="handleBatchDelete"
       >
+        <template #actions="{ row }">
+          <el-button size="small" text type="primary" @click="handleEdit(row as Contract)">编辑</el-button>
+          <el-button size="small" text type="danger" @click="handleDelete(row as Contract)">删除</el-button>
+        </template>
         <template #type="{ row }">
-          <el-tag size="small" effect="plain" :style="getTypeStyle(row.type)">{{ row.type }}</el-tag>
+          <el-tag size="small" effect="plain" type="info">{{ row.type }}</el-tag>
         </template>
         <template #amount="{ row }">
           <span class="amount-text">¥ {{ row.amount.toLocaleString() }}</span>
@@ -60,6 +67,7 @@
           <span v-else class="text-placeholder">未上传</span>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无合同数据" />
     </div>
 
     <!-- 新增/编辑弹窗 -->
@@ -137,8 +145,18 @@ import { useContractData, getContractStatus, getDaysLeft, contractTypes, type Co
 
 const { contractList, loading, fetchContracts, addContract, updateContract, deleteContract } = useContractData()
 
+// 权限：新增/编辑/删除需管理员/操作员（对齐后端 /api/contracts POST/PUT/DELETE）
+const canWrite = ref(false)
+
 // 页面加载时获取合同列表
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   fetchContracts()
 })
 
@@ -152,24 +170,6 @@ const supplierOptions = [
   '锐捷网络股份有限公司',
   '深信服科技股份有限公司',
 ]
-
-// 类型颜色映射（引用 tokens.css 业务类型配色变量）
-const typeColorMap: Record<string, string> = {
-  '宽带': 'var(--type-operator)',
-  '设备采购': 'var(--type-equipment)',
-  '项目': 'var(--type-service)',
-  '采购': 'var(--type-integrator)',
-  '维保': 'var(--type-software)',
-}
-
-function getTypeStyle(type: string) {
-  const color = typeColorMap[type] || 'var(--type-other)'
-  return {
-    backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
-    color: color,
-    borderColor: `color-mix(in srgb, ${color} 25%, transparent)`,
-  }
-}
 
 // 状态计算
 function getStatusTagType(expireDate: string) {
