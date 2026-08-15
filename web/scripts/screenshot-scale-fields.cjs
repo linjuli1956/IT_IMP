@@ -150,13 +150,34 @@ async function run() {
     await assertExists(page, '.el-table', '台账表格存在');
     await assertTableHeader(page, '秤号', '表格含秤号列');
     await assertTableHeader(page, 'IP地址', '表格含IP地址列');
+    await assertTableHeader(page, '规格', '表格含规格列');
+    await assertTableHeader(page, '下次校准', '表格含下次校准列');
+    await assertTableHeader(page, '状态', '表格含状态列');
+    await assertTableHeader(page, '操作', '表格含操作列');
     await assertBtnText(page, '导出当前页 CSV', '导出按钮存在');
     await assertBtnText(page, '新增电子称', '新增按钮存在');
     await assertExists(page, '.copyable-cell__btn', '复制图标存在');
+    // 验证下次校准/状态列不被固定操作列遮挡
+    const colVisibility = await page.evaluate(() => {
+      const headers = Array.from(document.querySelectorAll('.el-table__header th .cell'));
+      const result = {};
+      for (const h of headers) {
+        const text = h.textContent.trim();
+        if (['下次校准', '状态', '操作'].includes(text)) {
+          const rect = h.getBoundingClientRect();
+          result[text] = { visible: rect.width > 0 && rect.height > 0, right: Math.round(rect.right) };
+        }
+      }
+      return result;
+    });
+    if (!colVisibility['下次校准']?.visible) throw new Error('断言失败: 下次校准列不可见（可能被操作列遮挡）');
+    if (!colVisibility['状态']?.visible) throw new Error('断言失败: 状态列不可见（可能被操作列遮挡）');
+    if (!colVisibility['操作']?.visible) throw new Error('断言失败: 操作列不可见');
+    console.log('  断言通过: 下次校准/状态/操作列均可见');
     await assertNoDirtyData(page, '管理员台账 1366');
 
     const r = await shot(page, '01-scales-1366-admin.png', '电子秤 1366×768 管理员台账');
-    results.push({ ...r, verified: 'el-table, 秤号列, IP地址列, 导出CSV, 新增, copyable-cell__btn' });
+    results.push({ ...r, verified: 'el-table, 秤号/IP地址/规格/下次校准/状态/操作列可见, 导出CSV, 新增, copyable-cell__btn' });
     await ctx.close();
   }
 
@@ -254,12 +275,16 @@ async function run() {
     await assertExists(page, '.el-table', '台账表格存在');
     await assertTableHeader(page, '秤号', '表格含秤号列');
     await assertTableHeader(page, 'IP地址', '表格含IP地址列');
+    await assertTableHeader(page, '规格', '表格含规格列');
+    await assertTableHeader(page, '下次校准', '表格含下次校准列');
+    await assertTableHeader(page, '状态', '表格含状态列');
+    await assertTableHeader(page, '操作', '表格含操作列');
     await assertBtnText(page, '导出当前页 CSV', '导出按钮存在');
     await assertExists(page, '.copyable-cell__btn', '复制图标存在');
     await assertNoDirtyData(page, '管理员台账 1440');
 
     const r = await shot(page, '04-scales-1440-admin.png', '电子秤 1440×1024 管理员台账');
-    results.push({ ...r, verified: 'el-table, 秤号列, IP地址列, 导出CSV, copyable-cell__btn' });
+    results.push({ ...r, verified: 'el-table, 秤号/IP地址/规格/下次校准/状态/操作列, 导出CSV, copyable-cell__btn' });
     await ctx.close();
   }
 

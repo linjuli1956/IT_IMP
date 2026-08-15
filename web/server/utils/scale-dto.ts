@@ -18,7 +18,7 @@ export const SCALE_FIELDS = [
 ] as const
 
 /** 可空文本字段 */
-const NULLABLE_TEXT_FIELDS = new Set(['assetNo', 'brand', 'model', 'serialNo', 'scaleNo', 'installLocation'])
+const NULLABLE_TEXT_FIELDS = new Set(['assetNo', 'brand', 'model', 'serialNo', 'installLocation'])
 
 /** 合法 IPv4 校验（四段 0-255，不接收前置零如 001） */
 function isValidIPv4(s: string): boolean {
@@ -93,6 +93,14 @@ export function validateScaleFields(body: Record<string, unknown>): ScaleFieldVa
         data[key] = s
         break
       }
+      case 'scaleNo': {
+        const s = normalizeNullableText(value)
+        if (s === INVALID_VALUE) { errors.push('scaleNo 必须是字符串'); break }
+        if (s === null) { data[key] = null; break }
+        if (s.length > 50) { errors.push('scaleNo 最长 50 字符'); break }
+        data[key] = s
+        break
+      }
       case 'ipAddress': {
         const s = normalizeNullableText(value)
         if (s === INVALID_VALUE) { errors.push('ipAddress 必须是字符串'); break }
@@ -152,8 +160,16 @@ export function mapScaleApiError(error: unknown): { statusCode: number; message:
   const code = (error as { code?: string })?.code
   if (code === 'P2002') {
     const target = (error as { meta?: { target?: string[] } })?.meta?.target
-    if (target?.includes('scaleNo')) {
+    // Prisma 复合唯一约束可能以 target 数组或索引名出现在 message 中
+    const errMsg = String((error as { message?: string })?.message || '')
+    if (target?.includes('scaleNo') || errMsg.includes('scaleNo')) {
       return { statusCode: 409, message: '该门店已存在相同秤号' }
+    }
+    if (target?.includes('assetNo') || errMsg.includes('assetNo')) {
+      return { statusCode: 409, message: '资产编号与已有记录重复' }
+    }
+    if (target?.includes('serialNo') || errMsg.includes('serialNo')) {
+      return { statusCode: 409, message: '序列号与已有记录重复' }
     }
     return { statusCode: 409, message: '资产编号/序列号与已有记录重复' }
   }

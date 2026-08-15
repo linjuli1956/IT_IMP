@@ -89,6 +89,13 @@ describe('scaleNo 校验', () => {
     expect(validateScaleFields({ scaleNo: [1, 2] }).errors.length).toBeGreaterThan(0)
     expect(validateScaleFields({ scaleNo: true }).errors.length).toBeGreaterThan(0)
   })
+
+  it('超过 50 字符 → 400（避免数据库长度错误变为 500）', () => {
+    const long = 'A'.repeat(51)
+    expect(validateScaleFields({ scaleNo: long }).errors.length).toBeGreaterThan(0)
+    // 恰好 50 字符通过
+    expect(validateScaleFields({ scaleNo: 'B'.repeat(50) }).errors).toEqual([])
+  })
 })
 
 describe('ipAddress 校验', () => {

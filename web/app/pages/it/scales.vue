@@ -53,6 +53,9 @@
           <el-tag :type="calibrationTagType(row as ScaleItem)" size="small">{{ getCalibrationInfo((row as ScaleItem).nextCalibrationDate, (row as ScaleItem).status).label }}</el-tag>
         </template>
         <template #storeName="{ row }">{{ row.storeName || '-' }}</template>
+        <template #specs="{ row }">
+          <span class="specs-cell">{{ formatSpecs(row as ScaleItem) }}</span>
+        </template>
       </AssetTable>
     </div>
 
@@ -154,17 +157,14 @@ function handlePageChange(p: number, s: number) {
 }
 
 const columns: AssetColumn<ScaleItem>[] = [
-  { virtual: true, key: 'name', label: '名称', minWidth: 170, slot: 'name' },
-  { key: 'storeName', label: '门店', width: 130, slot: 'storeName' },
-  { key: 'assetNo', label: '资产编号', width: 110, copyable: true },
-  { key: 'scaleNo', label: '秤号', width: 90, copyable: true },
-  { key: 'ipAddress', label: 'IP地址', width: 130, copyable: true },
-  { key: 'capacityKg', label: '量程(kg)', width: 90, align: 'center' as const },
-  { key: 'precisionG', label: '精度(g)', width: 90, align: 'center' as const },
-  { key: 'interface', label: '接口', width: 90, align: 'center' as const },
-  { virtual: true, key: 'nextCalibrationDate', label: '下次校准', width: 130, align: 'center' as const, slot: 'nextCalibrationDate' },
-  { key: 'installLocation', label: '位置', minWidth: 120, copyable: true },
-  { key: 'status', label: '状态', width: 80, align: 'center' as const, type: 'status' as const },
+  { virtual: true, key: 'name', label: '名称', minWidth: 150, slot: 'name' },
+  { key: 'storeName', label: '门店', width: 110, slot: 'storeName' },
+  { key: 'assetNo', label: '资产编号', width: 100, copyable: true },
+  { key: 'scaleNo', label: '秤号', width: 80, copyable: true },
+  { key: 'ipAddress', label: 'IP地址', width: 110, copyable: true },
+  { virtual: true, key: 'specs', label: '规格', width: 140, slot: 'specs' },
+  { virtual: true, key: 'nextCalibrationDate', label: '下次校准', width: 100, align: 'center' as const, slot: 'nextCalibrationDate' },
+  { key: 'status', label: '状态', width: 70, align: 'center' as const, type: 'status' as const },
 ]
 
 const dialogVisible = ref(false)
@@ -201,6 +201,14 @@ function calibrationTagType(row: ScaleItem): 'danger' | 'warning' | 'info' | 'su
 function formatName(row: ScaleItem): string {
   const parts = [row.brand, row.model].filter(Boolean)
   return parts.length ? parts.join(' ') : (row.assetNo || `电子称#${row.id}`)
+}
+
+function formatSpecs(row: ScaleItem): string {
+  const parts: string[] = []
+  if (row.capacityKg != null) parts.push(`${row.capacityKg}kg`)
+  if (row.precisionG != null) parts.push(`${row.precisionG}g`)
+  if (row.interface) parts.push(row.interface)
+  return parts.length ? parts.join(' / ') : '—'
 }
 
 function openAdd() {
@@ -329,4 +337,5 @@ function handleExportCsv() {
 .drawer-field { display: inline-flex; align-items: center; gap: 4px; }
 .drawer-copy-btn { padding: 0; min-height: auto; color: var(--text-secondary); }
 .drawer-copy-btn:hover { color: var(--color-primary); }
+.specs-cell { color: var(--text-secondary); font-size: var(--font-size-mini); }
 </style>
