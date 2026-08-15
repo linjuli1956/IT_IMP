@@ -6,14 +6,14 @@
       :description="`角色分为管理员（全部权限）、操作员（日常操作）、查看者（只读）。默认管理员 admin 不可删除/重置密码；新增用户默认密码 123456，可通过「重置密码」恢复。`"
     >
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增用户
         </el-button>
       </template>
     </PageHeader>
 
-    <div class="filter-bar">
+    <div class="card filter-bar">
       <el-input
         v-model="searchKeyword"
         placeholder="搜索用户名或姓名"
@@ -29,6 +29,8 @@
         :columns="columns"
         :data="filteredUserList"
         :loading="tableLoading"
+        :show-selection="canEdit"
+        :show-actions="canEdit"
         :action-width="140"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
@@ -44,7 +46,7 @@
           />
         </template>
         <template #actions="{ row }">
-          <el-button size="small" @click="handleEdit(row)">编辑</el-button>
+          <el-button size="small" text type="primary" @click="handleEdit(row)">编辑</el-button>
           <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
             <el-button size="small" text :disabled="resetLoadingId === row.id">
               更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -97,6 +99,8 @@ import type { User } from '~/types/auth'
 import { useApi, getApiErrorMessage } from '~/composables/useApi'
 
 const api = useApi()
+
+const canEdit = ref(false)
 
 // —— 表格列定义 ——
 const columns = [
@@ -171,6 +175,13 @@ async function fetchUsers() {
 }
 
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
   fetchUsers()
 })
 
@@ -330,10 +341,4 @@ function handleResetPassword(row: any) {
 </script>
 
 <style scoped>
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
 </style>
