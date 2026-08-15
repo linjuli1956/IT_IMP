@@ -6,20 +6,32 @@
       :description="`管理各部门、门店、机构的名称和排序。门店数据同步至计提模板等模块，禁用的门店不会出现在其他模块的下拉选项中。`"
     >
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增部门/门店/机构
         </el-button>
       </template>
     </PageHeader>
 
+    <div class="card filter-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索名称或机构代码"
+        clearable
+        :prefix-icon="Search"
+        style="width: 260px"
+      />
+    </div>
+
     <div class="card">
       <CrudTable
-        v-if="storeList.length > 0 || loading"
+        v-if="filteredStoreList.length > 0 || loading"
         :columns="columns"
-        :data="storeList"
+        :data="filteredStoreList"
         :loading="loading"
-        :action-width="140"
+        :show-selection="canEdit"
+        :show-actions="canEdit"
+        :action-width="160"
         @edit="handleEdit"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
@@ -30,22 +42,11 @@
           </el-tag>
         </template>
         <template #actions="{ row }">
-          <el-button size="small" @click="handleEdit(row)">编辑</el-button>
-          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
-            <el-button size="small" text>
-              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="toggle">
-                  {{ row.status === 1 ? '禁用' : '启用' }}
-                </el-dropdown-item>
-                <el-dropdown-item command="delete" divided>
-                  <span style="color: var(--color-danger)">删除</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <el-button size="small" text type="primary" @click="handleEdit(row)">编辑</el-button>
+          <el-button size="small" text @click="handleToggleStatus(row)">
+            {{ row.status === 1 ? '禁用' : '启用' }}
+          </el-button>
+          <el-button size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </CrudTable>
       <EmptyState v-else description="暂无门店数据" />
@@ -64,14 +65,33 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getApiErrorMessage } from '~/composables/useApi'
 
 // 从共享数据源获取门店数据
 const { storeList, loading, fetchStores, addStore, updateStore, deleteStore, toggleStatus } = useStoreData()
 
+const canEdit = ref(false)
+const searchKeyword = ref('')
+
+const filteredStoreList = computed(() => {
+  if (!searchKeyword.value) return storeList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return storeList.value.filter((s: any) =>
+    (s.name || '').toLowerCase().includes(kw) ||
+    (s.code || '').toLowerCase().includes(kw)
+  )
+})
+
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
   fetchStores()
 })
 
@@ -182,11 +202,6 @@ async function handleToggleStatus(row: any) {
   }
 }
 
-// —— 操作下拉菜单 ——
-function handleActionCommand(command: string, row: any) {
-  if (command === 'toggle') handleToggleStatus(row)
-  else if (command === 'delete') handleDelete(row)
-}
 </script>
 
 <style scoped>
