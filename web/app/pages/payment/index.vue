@@ -3,9 +3,9 @@
     <PageHeader
       title="支付管理"
       subtitle="门店支付配置与服务商管理"
-      description="管理各门店支付方式的商户号、密钥、APPID等配置项，支持自定义支付方式与服务商。敏感信息默认脱敏显示，点击眼睛图标可切换。服务商行底色：中国邮政=浅蓝、昂捷=浅橙、昂捷离线付=浅绿。每列列头可筛选，勾选多行后可批量复制（Tab分隔，可粘贴Excel）。"
+      description="管理各门店支付方式的商户号、密钥、APPID等配置项，支持自定义支付方式与服务商。敏感信息默认脱敏显示，点击眼睛图标可切换。每列列头可筛选，勾选多行后可批量复制（Tab分隔，可粘贴Excel；敏感配置值以脱敏形式复制，不泄露明文）。"
     >
-      <template #actions>
+      <template v-if="canWrite" #actions>
         <el-button type="primary" @click="handleAddConfig">
           <el-icon><Plus /></el-icon>
           新增配置
@@ -34,19 +34,24 @@
       <el-input v-model="configFilterKeyword" placeholder="搜索机构代码/门店/服务商/配置项/配置值" clearable style="width: 360px" />
     </div>
 
-    <!-- 配置表格 -->
+    <!-- 配置表格（空表格与 EmptyState 互斥；批量复制为读操作，对所有角色保留） -->
     <div class="card" v-loading="loading">
       <CrudTable
+        v-if="loading || filteredConfigItems.length > 0"
         :columns="configColumns"
         :data="filteredConfigItems"
-        :stripe="false"
-        :row-class-name="getConfigRowClass"
+        :show-selection="true"
         :show-batch-copy="true"
-        @edit="handleEditConfig"
-        @delete="handleDeleteConfig"
+        :show-batch-delete="canWrite"
+        :show-actions="canWrite"
+        :action-width="130"
         @batch-delete="handleBatchDeleteConfig"
         @batch-copy="handleBatchCopy"
       >
+        <template #actions="{ row }">
+          <el-button size="small" text type="primary" @click="handleEditConfig(row)">编辑</el-button>
+          <el-button size="small" text type="danger" @click="handleDeleteConfig(row)">删除</el-button>
+        </template>
         <template #payMethod="{ row }">
           <el-tag v-bind="getPayMethodTagAttrs(row.payMethod)" size="small">
             {{ payMethodMap[row.payMethod]?.name || row.payMethod }}
@@ -80,6 +85,7 @@
           </el-tag>
         </template>
       </CrudTable>
+      <EmptyState v-else description="暂无支付配置数据" />
     </div>
 
     <!-- 配置项编辑弹窗 -->
@@ -172,8 +178,18 @@ const {
   fetchConfigItems, addConfigItem, updateConfigItem, deleteConfigItem,
 } = usePaymentData()
 
+// 权限：新增/编辑/删除需管理员/操作员（对齐后端 /api/payments POST/PUT/DELETE）
+const canWrite = ref(false)
+
 // 页面加载时获取支付配置
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   fetchConfigItems()
 })
 
@@ -185,11 +201,11 @@ const vars = {
   primary: 'var(--color-primary)',
   primaryLight: 'var(--color-primary-light)',
   success: 'var(--color-success)',
-  successLight: '#F0F9EB',
+  successLight: 'var(--color-success-light)',
   info: 'var(--color-info)',
-  infoLight: '#F4F4F5',
+  infoLight: 'var(--color-info-light)',
   danger: 'var(--color-danger)',
-  dangerLight: '#FEF0F0',
+  dangerLight: 'var(--color-danger-light)',
 }
 
 // —— 概览统计 ——
@@ -281,13 +297,10 @@ const configForm = reactive<PaymentConfigItem>({
   provider: '', configName: '', configValue: '', posNo: '', status: '正常', isSensitive: false,
 })
 
-// —— 自定义支付方式配色 ——
-const customColorPalette = ['#6C5CE7', '#00B894', '#0984E3', '#FD79A8', '#636E72', '#00CEC9']
-const customPayMethodColors = ref<Record<string, string>>({})
-const usedCustomColors = ref<Set<string>>(new Set())
+// —— 支付方式选项（预设 + 数据中自定义项；标签统一中性样式）——
 const allPayMethodOptions = computed(() => {
   const presets = new Set(payMethodOptions.map(o => o.value))
-  const extras = new Set<string>(Object.keys(customPayMethodColors.value))
+  const extras = new Set<string>()
   configItems.value.forEach(c => { if (!presets.has(c.payMethod)) extras.add(c.payMethod) })
   return [...payMethodOptions, ...[...extras].map(m => ({ value: m, label: m, tagType: '' }))]
 })
@@ -295,20 +308,9 @@ const allProviderOptions = computed(() => {
   const fromData = configItems.value.map(c => c.provider).filter(Boolean)
   return [...new Set([...providerOptions, ...fromData])]
 })
-function getPayMethodTagAttrs(method: string): Record<string, any> {
-  if (payMethodMap[method]) return { type: payMethodMap[method].tagType }
-  if (customPayMethodColors.value[method]) return { color: customPayMethodColors.value[method], effect: 'light' }
+// 支付方式为普通分类，不使用彩色标签；颜色仅保留给状态（正常/停用）与敏感提示
+function getPayMethodTagAttrs(_method: string): Record<string, any> {
   return { type: 'info' }
-}
-
-// —— 服务商行底色 ——
-const providerBgMap: Record<string, string> = {
-  '中国邮政': 'provider-postal',
-  '昂捷': 'provider-angjie',
-  '昂捷离线付': 'provider-angjie-offline',
-}
-function getConfigRowClass({ row }: { row: any }) {
-  return providerBgMap[row.provider] || ''
 }
 
 const configRules = {
@@ -330,13 +332,6 @@ function onStoreChange(storeName: string) {
 
 function onPayMethodChange(val: string) {
   configForm.payMethodName = payMethodMap[val]?.name || val
-  if (!payMethodMap[val] && !customPayMethodColors.value[val]) {
-    const available = customColorPalette.find(c => !usedCustomColors.value.has(c))
-    if (available) {
-      customPayMethodColors.value[val] = available
-      usedCustomColors.value.add(available)
-    }
-  }
 }
 
 function onConfigNameChange() {
@@ -422,7 +417,8 @@ function handleBatchCopy(rows: any[]) {
     payMethodMap[row.payMethod]?.name || row.payMethod,
     row.provider,
     row.configName,
-    row.configValue,
+    // 敏感配置值以脱敏形式复制（与页面默认显示一致），不向剪贴板输出明文密钥
+    row.isSensitive ? maskValue(row.configValue) : row.configValue,
     row.isSensitive ? '敏感' : '普通',
     row.status,
   ].join('\t'))
@@ -472,12 +468,4 @@ function handleBatchCopy(rows: any[]) {
   flex-shrink: 0;
   font-size: var(--font-size-body);
 }
-
-/* 服务商行底色 */
-:deep(.provider-postal > td) { background: var(--provider-postal-bg) !important; }
-:deep(.provider-angjie > td) { background: var(--provider-angjie-bg) !important; }
-:deep(.provider-angjie-offline > td) { background: var(--provider-angjie-offline-bg) !important; }
-:deep(.provider-postal:hover > td) { background: var(--provider-postal-hover) !important; }
-:deep(.provider-angjie:hover > td) { background: var(--provider-angjie-hover) !important; }
-:deep(.provider-angjie-offline:hover > td) { background: var(--provider-angjie-offline-hover) !important; }
 </style>
