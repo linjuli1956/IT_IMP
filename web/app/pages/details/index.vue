@@ -2,8 +2,8 @@
   <div class="page-container">
     <PageHeader title="明细表管理" subtitle="电信号码费用明细" description="目前仅电信有明细表（XLS格式），多 sheet 结构按门店分 sheet；明细表绑定运营商+费用月，生成计提表时按运营商+费用月自动匹配" />
 
-    <!-- 上传区 -->
-    <div class="card upload-card">
+    <!-- 上传区（仅管理员/操作员） -->
+    <div v-if="canWrite" class="card upload-card">
       <div class="section-header">
         <span class="section-title">上传明细表</span>
       </div>
@@ -69,47 +69,27 @@
 
     <!-- 明细表表格 -->
     <div class="card">
-      <template v-if="loading || filteredDetails.length > 0">
-      <!-- 批量操作栏 -->
-      <div v-if="selectedDetails.length > 0" class="batch-bar">
-        <span class="batch-info">已选 {{ selectedDetails.length }} 项</span>
-        <el-button size="small" type="danger" @click="handleBatchDelete">批量删除</el-button>
-        <el-button size="small" @click="clearSelection">取消选择</el-button>
-      </div>
-      <el-table
-        ref="tableRef"
-        v-loading="loading"
+      <CrudTable
+        v-if="loading || filteredDetails.length > 0"
+        :columns="columns"
         :data="filteredDetails"
-        border
-        stripe
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
+        :loading="loading"
+        :show-selection="canWrite"
+        :show-batch-delete="canWrite"
+        :action-width="130"
+        @batch-delete="handleBatchDelete"
       >
-        <el-table-column type="selection" width="45" align="center" />
-        <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="carrier" label="运营商" width="110" />
-        <el-table-column prop="feeMonth" label="费用月" width="100" align="center" />
-        <el-table-column prop="fileName" label="文件名" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="sheetCount" label="Sheet数" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">{{ row.sheetCount }}个</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="totalNumbers" label="号码数" width="90" align="center" />
-        <el-table-column label="合计金额" width="130" align="right">
-          <template #default="{ row }">
-            <span class="amount-text">¥ {{ row.totalAmount.toFixed(2) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="uploadTime" label="上传时间" width="150" align="center" />
-        <el-table-column label="操作" width="150" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-button size="small" @click="goDetail(row.id)">详情</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      </template>
+        <template #sheetCount="{ row }">
+          <el-tag size="small" type="info">{{ row.sheetCount }}个</el-tag>
+        </template>
+        <template #totalAmount="{ row }">
+          <span class="amount-text">¥ {{ row.totalAmount.toFixed(2) }}</span>
+        </template>
+        <template #actions="{ row }">
+          <el-button size="small" text @click="goDetail(row.id)">详情</el-button>
+          <el-button v-if="canWrite" size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </CrudTable>
 
       <EmptyState
         v-else
@@ -125,25 +105,31 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const { detailList, loading, fetchDetails, uploadDetail, deleteDetail, findByCarrierMonth } = useDetailData()
 
+// 权限：上传/删除明细表需管理员/操作员（对齐 /api/details POST、/api/details/:id DELETE）
+const canWrite = ref(false)
+
 // 页面加载时获取数据
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   fetchDetails()
 })
 
-// 表格引用
-const tableRef = ref()
-const selectedDetails = ref<any[]>([])
-
-// 选择变化
-function handleSelectionChange(rows: any[]) {
-  selectedDetails.value = rows
-}
-
-// 取消选择
-function clearSelection() {
-  tableRef.value?.clearSelection()
-  selectedDetails.value = []
-}
+// 表格列定义
+const columns = [
+  { prop: 'carrier', label: '运营商', width: 110 },
+  { prop: 'feeMonth', label: '费用月', width: 100, align: 'center' as const },
+  { prop: 'fileName', label: '文件名', minWidth: 220 },
+  { prop: 'sheetCount', label: 'Sheet数', width: 90, align: 'center' as const, slot: 'sheetCount' },
+  { prop: 'totalNumbers', label: '号码数', width: 90, align: 'center' as const },
+  { prop: 'totalAmount', label: '合计金额', width: 130, align: 'right' as const, slot: 'totalAmount' },
+  { prop: 'uploadTime', label: '上传时间', width: 150, align: 'center' as const },
+]
 
 // 运营商选项
 const carrierOptions = [
@@ -179,20 +165,13 @@ async function goDetail(id: number) {
   await navigateTo(`/details/${id}`)
 }
 
-// 批量删除
-function handleBatchDelete() {
-  ElMessageBox.confirm(`确定要删除选中的 ${selectedDetails.value.length} 张明细表吗？`, '批量删除', {
-    confirmButtonText: '确定删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  }).then(async () => {
-    const ids = selectedDetails.value.map(d => d.id)
-    for (const id of ids) {
-      await deleteDetail(id)
-    }
-    clearSelection()
-    ElMessage.success(`已删除 ${ids.length} 张明细表`)
-  }).catch(() => {})
+// 批量删除（CrudTable 已确认）
+async function handleBatchDelete(rows: any[]) {
+  const ids = rows.map(d => d.id)
+  for (const id of ids) {
+    await deleteDetail(id)
+  }
+  ElMessage.success(`已删除 ${ids.length} 张明细表`)
 }
 
 // 删除明细表
@@ -316,21 +295,4 @@ async function doUpload() {
   font-weight: 600;
   color: var(--text-primary);
 }
-
-.batch-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: 10px 16px;
-  margin-bottom: 12px;
-  background: var(--bg-page);
-  border-radius: var(--radius-sm);
-}
-
-.batch-info {
-  font-size: var(--font-size-small);
-  color: var(--text-secondary);
-  margin-right: auto;
-}
-
 </style>
