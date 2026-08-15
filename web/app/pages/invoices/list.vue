@@ -4,14 +4,7 @@
       title="发票列表"
       subtitle="发票查看、打印与管理"
       description="查看所有已上传的发票，支持按运营商、费用月、门店、关键词筛选。门店列用标签展示，一张发票可关联多个部门。操作列支持：查看预览、下载原文件、打印（A5尺寸，2张/张A4）、删除。"
-    >
-      <template #actions>
-        <el-button type="primary" :disabled="selectedInvoices.length === 0" @click="handleBatchPrint">
-          <el-icon><Printer /></el-icon>
-          批量打印（{{ selectedInvoices.length }}）
-        </el-button>
-      </template>
-    </PageHeader>
+    />
 
     <!-- 筛选区 -->
     <div class="card filter-card">
@@ -55,60 +48,42 @@
 
     <!-- 发票表格 -->
     <div class="card">
-      <template v-if="loading || filteredInvoices.length > 0">
-      <!-- 批量操作栏 -->
-      <div v-if="selectedInvoices.length > 0" class="batch-bar">
-        <span class="batch-info">已选 {{ selectedInvoices.length }} 项</span>
-        <el-button size="small" type="danger" @click="handleBatchDelete">批量删除</el-button>
-        <el-button size="small" @click="clearSelection">取消选择</el-button>
-      </div>
-      <el-table
-        ref="tableRef"
+      <CrudTable
+        v-if="loading || filteredInvoices.length > 0"
+        :columns="columns"
         :data="filteredInvoices"
-        border
-        stripe
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
+        :loading="loading"
+        :show-selection="canWrite"
+        show-batch-print
+        :show-batch-delete="canWrite"
+        :action-width="200"
+        @delete="handleDelete"
+        @batch-delete="handleBatchDelete"
+        @batch-print="handleBatchPrint"
       >
-        <el-table-column type="selection" width="45" align="center" />
-        <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="name" label="文件名" min-width="280" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span class="invoice-name">{{ row.name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="carrier" label="运营商" width="110" />
-        <el-table-column prop="feeMonth" label="费用月" width="100" align="center" />
-        <el-table-column label="门店/机构" min-width="180">
-          <template #default="{ row }">
-            <div class="store-tags">
-              <el-tag v-for="s in row.stores" :key="s" size="small" type="info">{{ s }}</el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="金额" width="130" align="right">
-          <template #default="{ row }">
-            <span class="amount-text">¥ {{ (row.amount || 0).toFixed(2) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="uploadTime" label="上传时间" width="150" align="center" />
-        <el-table-column label="操作" width="280" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-button size="small" @click="handleView(row)">查看</el-button>
-            <el-button size="small" @click="handleDownload(row)">下载</el-button>
-            <el-button size="small" @click="handlePrint(row)">打印</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      </template>
+        <template #name="{ row }">
+          <span class="invoice-name">{{ row.name }}</span>
+        </template>
+        <template #stores="{ row }">
+          <div class="store-tags">
+            <el-tag v-for="s in row.stores" :key="s" size="small" type="info">{{ s }}</el-tag>
+          </div>
+        </template>
+        <template #amount="{ row }">
+          <span class="amount-text">¥ {{ (row.amount || 0).toFixed(2) }}</span>
+        </template>
+        <template #status="{ row }">
+          <el-tag :type="getStatusType(row.status)" size="small">
+            {{ getStatusText(row.status) }}
+          </el-tag>
+        </template>
+        <template #actions="{ row }">
+          <el-button size="small" text @click="handleView(row)">查看</el-button>
+          <el-button size="small" text @click="handleDownload(row)">下载</el-button>
+          <el-button size="small" text @click="handlePrint(row)">打印</el-button>
+          <el-button v-if="canWrite" size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </CrudTable>
 
       <EmptyState v-else description="暂无发票数据" />
     </div>
@@ -160,15 +135,24 @@
 </template>
 
 <script setup lang="ts">
-import { Printer } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const { storeOptions } = useStoreData()
 const { invoiceList, deleteInvoice, deleteInvoices, fetchInvoices, loading } = useInvoiceData()
 const { renderPdfToImages, printImages } = usePdfPrint()
 
+// 权限：删除发票需管理员/操作员（对齐后端 /api/invoices/:id DELETE）
+const canWrite = ref(false)
+
 // 页面加载时获取发票列表
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   fetchInvoices()
 })
 
@@ -189,9 +173,16 @@ const filterForm = reactive({
   keyword: '',
 })
 
-// 表格引用
-const tableRef = ref()
-const selectedInvoices = ref<any[]>([])
+// 表格列定义
+const columns = [
+  { prop: 'name', label: '文件名', minWidth: 280, slot: 'name' },
+  { prop: 'carrier', label: '运营商', width: 110 },
+  { prop: 'feeMonth', label: '费用月', width: 100, align: 'center' as const },
+  { prop: 'stores', label: '门店/机构', minWidth: 180, slot: 'stores' },
+  { prop: 'amount', label: '金额', width: 130, align: 'right' as const, slot: 'amount' },
+  { prop: 'status', label: '状态', width: 100, align: 'center' as const, slot: 'status' },
+  { prop: 'uploadTime', label: '上传时间', width: 150, align: 'center' as const },
+]
 
 // 打印预览
 const printPreviewVisible = ref(false)
@@ -211,11 +202,6 @@ const filteredInvoices = computed(() => {
     return true
   })
 })
-
-// 选择变化
-function handleSelectionChange(rows: any[]) {
-  selectedInvoices.value = rows
-}
 
 // 重置筛选
 function resetFilter() {
@@ -304,8 +290,8 @@ function confirmPrint() {
 }
 
 // 批量打印（打开弹窗并渲染PDF预览）
-async function handleBatchPrint() {
-  if (selectedInvoices.value.length === 0) {
+async function handleBatchPrint(rows: any[]) {
+  if (rows.length === 0) {
     ElMessage.warning('请先勾选要打印的发票')
     return
   }
@@ -313,7 +299,7 @@ async function handleBatchPrint() {
   batchPrintImages.value = []
   rendering.value = true
   try {
-    const invoices = selectedInvoices.value.filter(inv => inv.filePath)
+    const invoices = rows.filter(inv => inv.filePath)
     for (const inv of invoices) {
       const images = await renderPdfToImages(inv.filePath)
       batchPrintImages.value.push(...images)
@@ -337,27 +323,11 @@ function confirmBatchPrint() {
   }
 }
 
-// 批量删除
-async function handleBatchDelete() {
-  try {
-    await ElMessageBox.confirm(`确定要删除选中的 ${selectedInvoices.value.length} 张发票吗？`, '批量删除', {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  const ids = selectedInvoices.value.map(inv => inv.id)
+// 批量删除（CrudTable 已确认）
+async function handleBatchDelete(rows: any[]) {
+  const ids = rows.map(inv => inv.id)
   await deleteInvoices(ids)
-  clearSelection()
   ElMessage.success(`已删除 ${ids.length} 张发票`)
-}
-
-// 取消选择
-function clearSelection() {
-  tableRef.value?.clearSelection()
-  selectedInvoices.value = []
 }
 
 // 删除发票
@@ -401,22 +371,6 @@ async function handleDelete(row: any) {
 .amount-text {
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.batch-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: 10px 16px;
-  margin-bottom: 12px;
-  background: var(--bg-page);
-  border-radius: var(--radius-sm);
-}
-
-.batch-info {
-  font-size: var(--font-size-small);
-  color: var(--text-secondary);
-  margin-right: auto;
 }
 
 .print-preview {

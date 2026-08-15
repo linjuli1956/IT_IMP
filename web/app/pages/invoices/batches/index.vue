@@ -5,7 +5,7 @@
       subtitle="发票批次管理与计提"
       description="批次号格式：{年月}{运营商缩写}{序号}（如 202606DX01）。支持按运营商、费用月、状态筛选。待计提批次显示「生成计提」按钮，已计提/已打印批次显示「再次生成」。"
     >
-      <template #actions>
+      <template v-if="canWrite" #actions>
         <el-button type="primary" @click="navigateTo('/invoices/upload')">
           <el-icon><Upload /></el-icon>
           上传新批次
@@ -59,63 +59,38 @@
 
     <!-- 批次表格 -->
     <div class="card">
-      <template v-if="loading || filteredBatches.length > 0">
-      <!-- 批量操作栏 -->
-      <div v-if="selectedBatches.length > 0" class="batch-bar">
-        <span class="batch-info">已选 {{ selectedBatches.length }} 项</span>
-        <el-button size="small" type="danger" @click="handleBatchDelete">批量删除</el-button>
-        <el-button size="small" @click="clearSelection">取消选择</el-button>
-      </div>
-      <el-table
-        ref="tableRef"
+      <CrudTable
+        v-if="loading || filteredBatches.length > 0"
+        :columns="columns"
         :data="filteredBatches"
-        border
-        stripe
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
+        :loading="loading"
+        :show-selection="canWrite"
+        :show-batch-delete="canWrite"
+        :batch-delete-hint="'选中批次包含的发票将一并删除。'"
+        :action-width="230"
+        @batch-delete="handleBatchDelete"
       >
-        <el-table-column type="selection" width="45" align="center" />
-        <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="id" label="批次号" width="120" align="center">
-          <template #default="{ row }">
-            <span class="batch-no">{{ formatBatchNo(row) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="carrier" label="运营商" width="110" />
-        <el-table-column prop="feeMonth" label="费用月" width="100" align="center" />
-        <el-table-column prop="store" label="门店/机构" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="invoiceCount" label="发票数" width="80" align="center" />
-        <el-table-column label="合计金额" width="130" align="right">
-          <template #default="{ row }">
-            <span class="amount-text">¥ {{ row.totalAmount.toFixed(2) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getBatchStatusType(row.status)" size="small">
-              {{ getBatchStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="150" align="center" />
-        <el-table-column label="操作" width="220" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-button size="small" @click="goDetail(row.id)">详情</el-button>
-            <el-button
-              v-if="row.status === 'pending'"
-              size="small" type="primary"
-              @click="handleGenerateAccrual(row)"
-            >生成计提</el-button>
-            <el-button
-              v-else
-              size="small" type="primary"
-              @click="handleGenerateAccrual(row)"
-            >再次生成</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      </template>
+        <template #batchNo="{ row }">
+          <span class="batch-no">{{ formatBatchNo(row) }}</span>
+        </template>
+        <template #totalAmount="{ row }">
+          <span class="amount-text">¥ {{ row.totalAmount.toFixed(2) }}</span>
+        </template>
+        <template #status="{ row }">
+          <el-tag :type="getBatchStatusType(row.status)" size="small">
+            {{ getBatchStatusText(row.status) }}
+          </el-tag>
+        </template>
+        <template #actions="{ row }">
+          <el-button size="small" text @click="goDetail(row.id)">详情</el-button>
+          <el-button
+            v-if="canWrite"
+            size="small" text type="primary"
+            @click="handleGenerateAccrual(row)"
+          >{{ row.status === 'pending' ? '生成计提' : '再次生成' }}</el-button>
+          <el-button v-if="canWrite" size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </CrudTable>
 
       <EmptyState v-else description="暂无批次数据" />
     </div>
@@ -136,6 +111,9 @@ const vars = {
 
 const { batchList, deleteBatch, deleteBatches, getBatchStatusText, getBatchStatusType, formatBatchNo, fetchBatches, loading } = useInvoiceData()
 
+// 权限：创建/删除批次、生成计提需管理员/操作员（对齐后端 /api/invoices/batches、/api/accruals/generate）
+const canWrite = ref(false)
+
 // 批次状态概览计数（待计提/已计提/已打印）
 const pendingCount = computed(() => batchList.value.filter(b => b.status === 'pending').length)
 const accruedCount = computed(() => batchList.value.filter(b => b.status === 'accrued').length)
@@ -143,23 +121,27 @@ const printedCount = computed(() => batchList.value.filter(b => b.status === 'pr
 
 // 页面加载时获取批次列表
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   fetchBatches()
 })
 
-// 表格引用
-const tableRef = ref()
-const selectedBatches = ref<any[]>([])
-
-// 选择变化
-function handleSelectionChange(rows: any[]) {
-  selectedBatches.value = rows
-}
-
-// 取消选择
-function clearSelection() {
-  tableRef.value?.clearSelection()
-  selectedBatches.value = []
-}
+// 表格列定义
+const columns = [
+  { prop: 'batchNo', label: '批次号', width: 120, align: 'center' as const, slot: 'batchNo' },
+  { prop: 'carrier', label: '运营商', width: 110 },
+  { prop: 'feeMonth', label: '费用月', width: 100, align: 'center' as const },
+  { prop: 'store', label: '门店/机构', minWidth: 180 },
+  { prop: 'invoiceCount', label: '发票数', width: 80, align: 'center' as const },
+  { prop: 'totalAmount', label: '合计金额', width: 130, align: 'right' as const, slot: 'totalAmount' },
+  { prop: 'status', label: '状态', width: 100, align: 'center' as const, slot: 'status' },
+  { prop: 'createTime', label: '创建时间', width: 150, align: 'center' as const },
+]
 
 // 运营商选项
 const carrierOptions = [
@@ -203,20 +185,10 @@ function handleGenerateAccrual(row: any) {
   navigateTo(`/accruals/generate/${row.id}`)
 }
 
-// 批量删除
-async function handleBatchDelete() {
-  try {
-    await ElMessageBox.confirm(`确定要删除选中的 ${selectedBatches.value.length} 个批次吗？包含的发票将一并删除。`, '批量删除', {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  const ids = selectedBatches.value.map(b => b.id)
+// 批量删除（CrudTable 已确认，含级联提示）
+async function handleBatchDelete(rows: any[]) {
+  const ids = rows.map(b => b.id)
   await deleteBatches(ids)
-  clearSelection()
   ElMessage.success(`已删除 ${ids.length} 个批次`)
 }
 
@@ -256,22 +228,6 @@ async function handleDelete(row: any) {
 .amount-text {
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.batch-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: 10px 16px;
-  margin-bottom: 12px;
-  background: var(--bg-page);
-  border-radius: var(--radius-sm);
-}
-
-.batch-info {
-  font-size: var(--font-size-small);
-  color: var(--text-secondary);
-  margin-right: auto;
 }
 
 .stat-row { margin-bottom: 0; }

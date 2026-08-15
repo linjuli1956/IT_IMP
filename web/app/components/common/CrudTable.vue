@@ -93,6 +93,7 @@ interface Props {
   showBatchPrint?: boolean
   showBatchCopy?: boolean
   showBatchDelete?: boolean
+  batchDeleteHint?: string
   total?: number
   actionWidth?: number
   rowClassName?: string | ((data: { row: any; rowIndex: number }) => string)
@@ -107,6 +108,7 @@ const props = withDefaults(defineProps<Props>(), {
   showBatchPrint: false,
   showBatchCopy: false,
   showBatchDelete: true,
+  batchDeleteHint: '',
   total: 0,
   actionWidth: 240,
   stripe: true,
@@ -140,7 +142,10 @@ function handleDelete(row: any) {
 }
 
 function handleBatchDelete() {
-  ElMessageBox.confirm(`确定要删除选中的 ${selectedRows.value.length} 项吗？`, '批量删除', {
+  const message = props.batchDeleteHint
+    ? `确定要删除选中的 ${selectedRows.value.length} 项吗？\n${props.batchDeleteHint}`
+    : `确定要删除选中的 ${selectedRows.value.length} 项吗？`
+  ElMessageBox.confirm(message, '批量删除', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',

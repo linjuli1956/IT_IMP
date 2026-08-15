@@ -8,13 +8,13 @@
           @click="navigateTo(`/accruals/${existingAccrual.id}`)"
         >查看计提表</el-button>
         <el-button
-          v-if="!batch || batch.status === 'pending'"
+          v-if="canWrite && (!batch || batch.status === 'pending')"
           type="primary"
           :disabled="!batch"
           @click="handleGenerateAccrual"
         >生成计提表</el-button>
         <el-button
-          v-else
+          v-else-if="canWrite"
           type="primary"
           @click="handleGenerateAccrual"
         >再次生成计提表</el-button>
@@ -117,8 +117,18 @@ const batchId = Number(route.params.id)
 const batch = ref<any>(null)
 const loading = ref(false)
 
+// 权限：生成计提表需管理员/操作员（对齐后端 /api/accruals/generate）
+const canWrite = ref(false)
+
 // 加载批次详情
 onMounted(async () => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   loading.value = true
   batch.value = await fetchBatchById(batchId)
   loading.value = false

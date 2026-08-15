@@ -10,7 +10,16 @@
       </template>
     </PageHeader>
 
-    <div class="upload-page">
+    <!-- 查看者无上传权限（对齐后端 /api/invoices/upload 管理员+操作员） -->
+    <div v-if="!canWrite" class="card">
+      <EmptyState
+        description="当前账号无上传权限，请联系管理员或操作员上传发票"
+        action-text="返回批次列表"
+        @action="navigateTo('/invoices/batches')"
+      />
+    </div>
+
+    <div v-else class="upload-page">
       <!-- 步骤指引 -->
       <el-steps :active="activeStep" align-center class="steps">
         <el-step title="填写信息" description="选运营商/费用月/门店" />
@@ -201,6 +210,19 @@ import type { OcrResult } from '~/types/invoice'
 
 const { storeOptions } = useStoreData()
 const { createBatch: createNewBatch, uploadInvoices, confirmInvoices, formatBatchNo } = useInvoiceData()
+
+// 权限：上传/确认发票需管理员/操作员
+const canWrite = ref(false)
+
+onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
+})
 
 // 运营商选项
 const carrierOptions = [
