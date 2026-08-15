@@ -32,7 +32,9 @@
         :columns="columns"
         :data="filteredList"
         :loading="loading"
+        :show-selection="canWrite"
         show-batch-print
+        :show-batch-delete="canWrite"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
         @batch-print="handleBatchPrint"
@@ -57,9 +59,9 @@
           </el-tag>
         </template>
         <template #actions="{ row }">
-          <el-button size="small" @click="navigateTo(`/accruals/${row.id}`)">查看</el-button>
-          <el-button size="small" type="primary" @click="handlePrint(row)">打印</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button size="small" text @click="navigateTo(`/accruals/${row.id}`)">查看</el-button>
+          <el-button size="small" text type="primary" @click="handlePrint(row)">打印</el-button>
+          <el-button v-if="canWrite" size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </CrudTable>
 
@@ -78,7 +80,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const { accrualList, loading, fetchAccruals, deleteAccrual, deleteAccruals, getStatusText, getStatusType, getMethodText } = useAccrualData()
 
+// 权限：删除计提表需管理员/操作员（对齐 /api/accruals/:id DELETE）
+const canWrite = ref(false)
+
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   fetchAccruals()
 })
 const { printAccrual, printAccruals } = useAccrualPrint()
@@ -158,7 +170,7 @@ function handleBatchPrint(rows: any[]) {
 
 <style scoped>
 .filter-card {
-  margin-bottom: 16px;
+  margin-bottom: var(--spacing-card);
 }
 
 .batch-no-text {

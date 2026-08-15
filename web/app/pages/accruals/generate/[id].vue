@@ -3,7 +3,7 @@
     <PageHeader :title="`生成计提表 ${batch ? batchNo : ''}`" subtitle="按明细表/发票/分摊方案生成">
       <template #actions>
         <el-button @click="navigateTo(`/invoices/batches/${batchId}`)">返回批次详情</el-button>
-        <el-button type="primary" :disabled="!batch || generating" :loading="generating" @click="handleGenerate">
+        <el-button v-if="canWrite" type="primary" :disabled="!batch || generating" :loading="generating" @click="handleGenerate">
           确认生成计提表
         </el-button>
       </template>
@@ -220,6 +220,9 @@ const { schemeList, fetchFeeSchemes, findByCarrier: findSchemesByCarrier } = use
 
 const batch = computed(() => getBatchById(batchId))
 const batchNo = computed(() => batch.value ? formatBatchNo(batch.value) : '')
+
+// 权限：生成计提表需管理员/操作员（对齐 /api/accruals/generate POST）；查看者仅可预览
+const canWrite = ref(false)
 
 const isTelecom = computed(() => batch.value?.carrier === '中国电信')
 
@@ -708,6 +711,13 @@ async function handleGenerate() {
 
 // 初始化
 onMounted(async () => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   // 确保批次、模板、明细表数据已加载
   if (!getBatchById(batchId)) {
     await fetchBatchById(batchId)

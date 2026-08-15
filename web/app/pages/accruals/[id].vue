@@ -12,7 +12,7 @@
           A5打印
         </el-button>
         <el-button type="primary" @click="handleDownload">下载Excel</el-button>
-        <el-button v-if="isAllocation" type="warning" @click="handleEdit">
+        <el-button v-if="isAllocation && canWrite" type="warning" @click="handleEdit">
           <el-icon><Edit /></el-icon>
           编辑费用项
         </el-button>
@@ -160,6 +160,9 @@ const accrual = ref<Accrual | null>(null)
 const loading = ref(false)
 const isAllocation = computed(() => accrual.value?.method === 'allocation')
 
+// 权限：编辑费用项需管理员/操作员（对齐 /api/accruals/:id PUT）
+const canWrite = ref(false)
+
 // allocation 模式下存储的 invoiceAmount=subtotal，需从批次获取实际发票总额
 const batchTotalInvoice = ref(0)
 
@@ -225,6 +228,13 @@ async function handleEditSave() {
 }
 
 onMounted(async () => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canWrite.value = role === '管理员' || role === '操作员'
+    } catch { canWrite.value = false }
+  }
   loading.value = true
   accrual.value = await fetchAccrualById(accrualId)
   // allocation 模式：加载方案数据 + 批次发票总额（用于分摊差额计算）
