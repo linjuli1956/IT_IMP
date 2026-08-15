@@ -6,25 +6,42 @@
       :description="`管理合作方信息（运营商、设备商、服务商等），客户类型支持 6 种预设+自定义输入，不同类型有独有配色标识。合同管理模块将引用此处的客户信息。`"
     >
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增客户
         </el-button>
       </template>
     </PageHeader>
 
+    <div class="card filter-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索名称、联系人或类型"
+        clearable
+        :prefix-icon="Search"
+        style="width: 260px"
+      />
+    </div>
+
     <div class="card">
       <CrudTable
-        v-if="supplierList.length > 0 || loading"
+        v-if="filteredSupplierList.length > 0 || loading"
         :columns="columns"
-        :data="supplierList"
+        :data="filteredSupplierList"
         :loading="loading"
+        :show-selection="canEdit"
+        :show-actions="canEdit"
+        :action-width="120"
         @edit="handleEdit"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
       >
         <template #type="{ row }">
           <el-tag size="small" effect="plain" :style="getTypeStyle(row.type)">{{ row.type }}</el-tag>
+        </template>
+        <template #actions="{ row }">
+          <el-button size="small" text type="primary" @click="handleEdit(row)">编辑</el-button>
+          <el-button size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </CrudTable>
       <EmptyState v-else description="暂无客户数据" />
@@ -45,13 +62,33 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { useSupplierData } from '~/composables/useSupplierData'
 import { getApiErrorMessage } from '~/composables/useApi'
 
 const { supplierList, loading, fetchSuppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplierData()
 
+const canEdit = ref(false)
+const searchKeyword = ref('')
+
+const filteredSupplierList = computed(() => {
+  if (!searchKeyword.value) return supplierList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return supplierList.value.filter((s: any) =>
+    (s.name || '').toLowerCase().includes(kw) ||
+    (s.contact || '').toLowerCase().includes(kw) ||
+    (s.type || '').toLowerCase().includes(kw)
+  )
+})
+
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
   fetchSuppliers()
 })
 
