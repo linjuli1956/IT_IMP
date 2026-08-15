@@ -6,20 +6,32 @@
       :description="`每个运营商+门店一套模板，点击「编辑明细」配置模板行。电信模板填号码匹配明细表，联通/移动填费用类型直接填发票金额。报销说明支持 4 种预设格式或自定义。`"
     >
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增模板
         </el-button>
       </template>
     </PageHeader>
 
+    <div class="card filter-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索运营商或门店"
+        clearable
+        :prefix-icon="Search"
+        style="width: 260px"
+      />
+    </div>
+
     <div class="card">
       <CrudTable
-        v-if="templateList.length > 0 || loading"
+        v-if="filteredTemplateList.length > 0 || loading"
         :columns="columns"
-        :data="templateList"
+        :data="filteredTemplateList"
         :loading="loading"
-        :action-width="160"
+        :show-selection="canEdit"
+        :show-actions="canEdit"
+        :action-width="180"
         @delete="handleDelete"
         @batch-delete="handleBatchDelete"
       >
@@ -30,20 +42,9 @@
           <el-tag size="small" type="info">{{ row.itemCount }} 行</el-tag>
         </template>
         <template #actions="{ row }">
-          <el-button size="small" type="primary" @click="handleEditDetail(row)">编辑明细</el-button>
-          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
-            <el-button size="small" text>
-              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="view">查看</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>
-                  <span style="color: var(--color-danger)">删除</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <el-button size="small" text type="primary" @click="handleEditDetail(row)">编辑明细</el-button>
+          <el-button size="small" text @click="handleViewDetail(row)">查看</el-button>
+          <el-button size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </CrudTable>
       <EmptyState v-else description="暂无计提模板" />
@@ -152,7 +153,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, InfoFilled, View, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, InfoFilled, View, Search } from '@element-plus/icons-vue'
 
 // 运营商选项
 const carrierOptions = [
@@ -168,8 +169,27 @@ const { storeOptions } = useStoreData()
 // 从共享数据源获取计提模板（计提管理模块也使用同一份数据）
 const { templateList, loading, fetchTemplates, createTemplate, updateTemplate, deleteTemplate, getInvolvedDepts } = useTemplateData()
 
+const canEdit = ref(false)
+const searchKeyword = ref('')
+
+const filteredTemplateList = computed(() => {
+  if (!searchKeyword.value) return templateList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return templateList.value.filter((t: any) =>
+    (t.carrier || '').toLowerCase().includes(kw) ||
+    (t.store || '').toLowerCase().includes(kw)
+  )
+})
+
 // 页面加载时获取模板列表
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
   fetchTemplates()
 })
 
@@ -403,11 +423,6 @@ async function handleBatchDelete(rows: any[]) {
   }
 }
 
-// —— 操作下拉菜单 ——
-function handleActionCommand(command: string, row: any) {
-  if (command === 'view') handleViewDetail(row)
-  else if (command === 'delete') handleDelete(row)
-}
 </script>
 
 <style scoped>
