@@ -10,10 +10,14 @@
  *   - cleanup 后按基线计数验证无残留
  *   - VIEWER_USERNAME/VIEWER_PASSWORD 环境变量强制，缺失即失败（真实 JWT，不伪造角色）
  *   - 敏感演示值为非真实凭据的占位串；断言明文敏感值不出现在页面 DOM（防泄露）
+ *   - 支付截图经搜索栏筛选共同商标识（泰兴门店支付服务），最终截图仅含本轮
+ *     业务化数据，库内存量历史记录不入镜；assertNoDirtyData 增加独立测试值
+ *     （123/333/555/111/222）单元格级精确检查，不误判商户号等正常长数字
  *
  * 运行方式（服务器需以 DATABASE_URL 环境变量启动在 3320 端口）：
  *   $env:VIEWER_USERNAME="viewer"; $env:VIEWER_PASSWORD="123456"
- *   node scripts/screenshot-contracts-payment.cjs
+ *   node scripts/screenshot-contracts-payment.cjs          # 全量 01-10
+ *   $env:ONLY="payment"; node scripts/screenshot-contracts-payment.cjs   # 仅支付 06-10（P1 收口）
  */
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -36,8 +40,14 @@ if (!VIEWER_USERNAME || !VIEWER_PASSWORD) {
 
 const runId = Date.now().toString(36).slice(-6);
 
+// 运行模式：ONLY=payment 时跳过合同数据与 01-05 截图，仅重跑支付 06-10（P1 收口用）
+const ONLY = (process.env.ONLY || 'all').trim().toLowerCase();
+
 // 敏感演示值（非真实凭据的占位串，仅用于脱敏展示验证）
 const DEMO_SECRET = 'A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6';
+
+// 本轮临时数据共同商标识：业务化名称，供支付页搜索栏筛选；runId 仅用于后台，不出现在截图
+const DEMO_PROVIDER = '泰兴门店支付服务';
 
 const tempData = { contractIds: [], paymentIds: [] };
 const baseline = {};
@@ -157,19 +167,53 @@ async function assertNoSecretLeak(page, label) {
 }
 
 async function assertNoDirtyData(page, label) {
-  const dirtyValues = ['null', 'undefined', 'e2e', 'tmp', '123456'];
-  const visibleText = await page.evaluate(() => {
+  // 子串级脏值：可见文本不得包含（保留原有检查）
+  const dirtySubstrings = ['null', 'undefined', 'e2e', 'tmp', '123456'];
+  // 独立测试值：单元格级精确匹配（避免把商户号等正常长数字误判为 123/111 等）
+  const dirtyCellValues = ['123', '333', '555', '111', '222'];
+  const { visibleText, cellValues } = await page.evaluate(() => {
     const els = document.querySelectorAll('.el-table, .el-drawer, .el-dialog, .el-form, .el-descriptions');
     let text = '';
     els.forEach(el => { if (el.offsetHeight > 0) text += (el.innerText || '') + ' '; });
-    return text;
+    const cellEls = document.querySelectorAll(
+      '.el-table .el-table__row .cell, .el-dialog .el-form-item__content, .el-descriptions__body .cell'
+    );
+    const cellValues = [];
+    cellEls.forEach(c => {
+      if (c.offsetParent !== null) {
+        (c.innerText || '').split('\n').forEach(line => {
+          const v = line.trim();
+          if (v) cellValues.push(v);
+        });
+      }
+    });
+    return { visibleText: text, cellValues };
   });
-  for (const dirty of dirtyValues) {
+  for (const dirty of dirtySubstrings) {
     if (visibleText.toLowerCase().includes(dirty)) {
       throw new Error(`数据质量断言失败: ${label} - 可见区域包含脏值 "${dirty}"`);
     }
   }
+  for (const value of cellValues) {
+    if (dirtyCellValues.includes(value)) {
+      throw new Error(`数据质量断言失败: ${label} - 单元格出现独立测试值 "${value}"`);
+    }
+  }
   console.log(`  数据质量断言通过: ${label}`);
+}
+
+/** 通过搜索栏筛选共同商标识，仅展示本轮 3 条业务化临时数据（排除库内存量记录） */
+async function filterToDemoData(page, label) {
+  await page.fill('input[placeholder^="搜索机构代码"]', DEMO_PROVIDER);
+  await page.waitForTimeout(600);
+  const rows = await page.evaluate(() => {
+    const wrapper = document.querySelector('.el-table__body-wrapper');
+    return wrapper ? wrapper.querySelectorAll('.el-table__row').length : -1;
+  });
+  if (rows !== 3) {
+    throw new Error(`筛选断言失败: ${label} - 期望仅本轮 3 行业务化数据，实际 ${rows} 行`);
+  }
+  console.log(`  筛选断言通过: ${label} - 仅展示本轮 3 行业务化配置`);
 }
 
 /** 上下文管理：确保 ctx 总是被关闭 */
@@ -219,7 +263,8 @@ async function setupTempData(token) {
   console.log(`  使用门店: ${store.name} (code=${store.code})`);
 
   // 2. 合同 3 条：有效（绿）/ 临期（橙，+15 天）/ 已过期（红，-30 天）
-  const contracts = [
+  // ONLY=payment 模式下跳过合同临时数据（P1 收口仅重跑支付 06-10，合同 01-05 不重做）
+  const contracts = ONLY === 'payment' ? [] : [
     {
       title: '门店宽带服务合同', supplierName: '中国电信泰兴分公司', type: '宽带',
       amount: 12800, signDate: dateOffset(-400), expireDate: dateOffset(300), remark: '门店宽带年度服务',
@@ -240,20 +285,22 @@ async function setupTempData(token) {
   }
 
   // 3. 支付配置 3 条：普通 / 敏感（脱敏展示）/ 停用
+  // 服务商统一为业务化商标识 DEMO_PROVIDER：截图时经搜索栏筛选，仅展示本轮数据，
+  // 库内存量历史记录（含遗留测试值）不入最终截图；runId 仅用于后台唯一性与清理
   const payments = [
     {
       storeId: store.code, storeName: store.name, payMethod: 'wx', payMethodName: '微信',
-      provider: '中国邮政', configName: '商户号', configValue: '8210663799251',
+      provider: DEMO_PROVIDER, configName: '商户号', configValue: '8210663799251',
       posNo: '', status: '正常', isSensitive: false,
     },
     {
       storeId: store.code, storeName: store.name, payMethod: 'wx', payMethodName: '微信',
-      provider: '中国邮政', configName: '支付密钥', configValue: DEMO_SECRET,
+      provider: DEMO_PROVIDER, configName: '支付密钥', configValue: DEMO_SECRET,
       posNo: '', status: '正常', isSensitive: true,
     },
     {
       storeId: store.code, storeName: store.name, payMethod: 'zfb', payMethodName: '支付宝',
-      provider: '昂捷', configName: '设备号', configValue: 'FACE-8823-0091',
+      provider: DEMO_PROVIDER, configName: '设备号', configValue: 'FACE-8823-0091',
       posNo: 'POS0091', status: '停用', isSensitive: false,
     },
   ];
@@ -321,8 +368,9 @@ async function run() {
     await setupTempData(token);
 
     // ==============================
-    // A. 合同管理
+    // A. 合同管理（ONLY=payment 时整体跳过）
     // ==============================
+    if (ONLY !== 'payment') {
     console.log('\n=== A. 合同管理 ===');
 
     console.log('[01] 合同列表 1366 管理员');
@@ -404,6 +452,8 @@ async function run() {
       return { ...r, verified: '数据行可见, 附件链接保留, 无新增/编辑/删除/选择列' };
     }));
 
+    } // end if (ONLY !== 'payment')
+
     // ==============================
     // B. 支付管理
     // ==============================
@@ -415,6 +465,7 @@ async function run() {
       await page.goto(`${BASE}/payment`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
       await assertExists(page, '.el-table', '支付配置表格存在');
+      await filterToDemoData(page, '支付列表 1366 admin');
       await assertHasTableData(page, '支付配置有数据行');
       await assertExists(page, '.stat-row', '统计卡存在');
       await assertBtnText(page, '新增配置', '管理员有新增配置按钮');
@@ -422,7 +473,7 @@ async function run() {
       await assertNoSecretLeak(page, '支付列表默认脱敏');
       await assertNoDirtyData(page, '支付配置 1366 admin');
       const r = await shot(page, '06-payment-1366-admin.png', '支付配置 1366×768 管理员');
-      return { ...r, verified: '统计卡, 3行配置, 敏感值脱敏, 状态色(正常/停用), 新增/编辑' };
+      return { ...r, verified: '统计卡, 筛选后仅本轮3行业务化配置(普通/敏感/停用), 敏感值脱敏, 状态色, 新增/编辑' };
     }));
 
     console.log('[07] 支付配置 1440 管理员');
@@ -430,11 +481,12 @@ async function run() {
       await login(page);
       await page.goto(`${BASE}/payment`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
+      await filterToDemoData(page, '支付列表 1440 admin');
       await assertHasTableData(page, '支付配置有数据行');
       await assertNoSecretLeak(page, '支付列表 1440 默认脱敏');
       await assertNoDirtyData(page, '支付配置 1440 admin');
       const r = await shot(page, '07-payment-1440-admin.png', '支付配置 1440×1024 管理员');
-      return { ...r, verified: '数据行' };
+      return { ...r, verified: '数据行(筛选后仅本轮3行业务化配置)' };
     }));
 
     console.log('[08] 支付新增配置弹窗 1366 管理员');
@@ -442,6 +494,7 @@ async function run() {
       await login(page);
       await page.goto(`${BASE}/payment`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
+      await filterToDemoData(page, '支付新增弹窗背景 1366 admin');
       await page.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('button'));
         const b = btns.find(x => x.textContent.includes('新增配置'));
@@ -462,6 +515,7 @@ async function run() {
       await login(page);
       await page.goto(`${BASE}/payment`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
+      await filterToDemoData(page, '支付脱敏态 1366 admin');
       // 断言敏感行脱敏样式 + 眼睛图标存在
       const masked = await page.evaluate(() => !!document.querySelector('.value-text.masked'));
       if (!masked) throw new Error('断言失败: 敏感配置值未脱敏显示');
@@ -481,6 +535,7 @@ async function run() {
       await login(page, VIEWER_USERNAME, VIEWER_PASSWORD);
       await page.goto(`${BASE}/payment`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
+      await filterToDemoData(page, '支付列表 1366 viewer');
       await assertHasTableData(page, '查看者可看到支付配置');
       await assertNoBtnText(page, '新增配置', '查看者无新增配置按钮');
       await assertNoBtnText(page, '编辑', '查看者无编辑按钮');
