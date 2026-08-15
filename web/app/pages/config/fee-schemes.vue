@@ -6,21 +6,32 @@
       :description="`方案独立于运营商和门店，支持四种分摊方式（固定金额、比例、按数量、手动输入）。生成计提表时选择「按费用分摊方案」模式即可使用。运营商为空表示通用方案。`"
     >
       <template #actions>
-        <el-button type="primary" @click="handleAdd">
+        <el-button v-if="canEdit" type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon>
           新增方案
         </el-button>
       </template>
     </PageHeader>
 
+    <div class="card filter-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索方案名称或运营商"
+        clearable
+        :prefix-icon="Search"
+        style="width: 260px"
+      />
+    </div>
+
     <div class="card">
       <CrudTable
-        v-if="schemeList.length > 0 || loading"
+        v-if="filteredSchemeList.length > 0 || loading"
         :columns="columns"
-        :data="schemeList"
+        :data="filteredSchemeList"
         :loading="loading"
         :show-selection="false"
-        :action-width="140"
+        :show-actions="canEdit"
+        :action-width="200"
         @delete="handleDelete"
       >
         <template #carrier="{ row }">
@@ -36,18 +47,12 @@
           </el-tag>
         </template>
         <template #actions="{ row }">
-          <el-button size="small" @click="handleEdit(row as FeeAllocationScheme)">编辑</el-button>
-          <el-dropdown trigger="click" @command="(cmd) => handleActionCommand(cmd as string, row)">
-            <el-button size="small" text>
-              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="view">查看</el-dropdown-item>
-                <el-dropdown-item command="toggle">{{ row.status === 1 ? '禁用' : '启用' }}</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <el-button size="small" text type="primary" @click="handleEdit(row as FeeAllocationScheme)">编辑</el-button>
+          <el-button size="small" text @click="handleView(row as FeeAllocationScheme)">查看</el-button>
+          <el-button size="small" text @click="handleToggleStatus(row as FeeAllocationScheme)">
+            {{ row.status === 1 ? '禁用' : '启用' }}
+          </el-button>
+          <el-button size="small" text type="danger" @click="handleDelete(row as FeeAllocationScheme)">删除</el-button>
         </template>
       </CrudTable>
       <EmptyState v-else description="暂无费用分摊方案" />
@@ -104,7 +109,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import type { FeeItem, FeeAllocationScheme } from '~/types/fee-scheme'
 
 const carrierOptions = [
@@ -116,7 +121,26 @@ const carrierOptions = [
 
 const { schemeList, loading, fetchFeeSchemes, createFeeScheme, updateFeeScheme, deleteFeeScheme } = useFeeSchemeData()
 
+const canEdit = ref(false)
+const searchKeyword = ref('')
+
+const filteredSchemeList = computed(() => {
+  if (!searchKeyword.value) return schemeList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return schemeList.value.filter((s: any) =>
+    (s.name || '').toLowerCase().includes(kw) ||
+    (s.carrier || '').toLowerCase().includes(kw)
+  )
+})
+
 onMounted(() => {
+  const rawUser = localStorage.getItem('user_info')
+  if (rawUser) {
+    try {
+      const role = JSON.parse(rawUser).role
+      canEdit.value = role === '管理员' || role === '操作员'
+    } catch { canEdit.value = false }
+  }
   fetchFeeSchemes()
 })
 
@@ -244,11 +268,6 @@ async function handleToggleStatus(row: FeeAllocationScheme) {
   }
 }
 
-// —— 操作下拉菜单 ——
-function handleActionCommand(command: string, row: any) {
-  if (command === 'view') handleView(row as FeeAllocationScheme)
-  else if (command === 'toggle') handleToggleStatus(row as FeeAllocationScheme)
-}
 </script>
 
 <style scoped>
