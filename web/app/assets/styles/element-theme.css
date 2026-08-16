@@ -1,7 +1,7 @@
 /* ===========================================
  * Element Plus 主题定制
  * 统一引用 tokens.css 变量，消除重复硬编码
- * 加载顺序：tokens.css → element-theme.scss → global.css
+ * 加载顺序：tokens.css → element-theme.css → global.css
  * =========================================== */
 
 :root {

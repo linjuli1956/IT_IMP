@@ -24,7 +24,7 @@ export default defineNuxtConfig({
   // 全局样式（顺序：Token → 主题 → 全局）
   css: [
     '~/assets/styles/tokens.css',
-    '~/assets/styles/element-theme.scss',
+    '~/assets/styles/element-theme.css',
     '~/assets/styles/global.css',
   ],
 
