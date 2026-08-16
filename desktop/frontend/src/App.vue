@@ -4,9 +4,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   GenerateJWTSecret, GetBuildVersion, GetConfig, SaveAppName, SaveDatabaseConfig, SaveWebPort, SaveJWTSecret,
   TestConnection, InitDatabase, UpgradeDatabase, GetDatabaseStatus,
-  ProvisionInitialAdmin, ResetAdminPassword, StartService, StopService, GetServiceStatus
+  ProvisionInitialAdmin, ResetAdminPassword, StartService, StopService, GetServiceStatus,
+  GetStartupWarnings
 } from '../wailsjs/go/main/App'
-import { EventsOn } from '../wailsjs/runtime/runtime'
+import { EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime'
 import InitialAdminConfig from './components/InitialAdminConfig.vue'
 import DatabaseStatusSummary from './components/DatabaseStatusSummary.vue'
 
@@ -48,6 +49,12 @@ onMounted(async () => {
     if (config?.webPort) webPort.value = config.webPort
     if (config?.jwtSecret) jwtSecret.value = config.jwtSecret
   } catch (e) { /* 使用默认配置 */ }
+
+  // 启动期配置警告（配置目录创建/旧配置迁移失败）必须可见，不能静默忽略
+  try {
+    const warnings = await GetStartupWarnings()
+    warnings?.forEach((w) => ElMessage.warning(w))
+  } catch { /* 绑定不可用时忽略 */ }
 
   serviceRunning.value = await GetServiceStatus()
   await refreshDbStatus()
@@ -163,8 +170,14 @@ const handleUpgradeDatabase = async () => {
         { type: 'warning', confirmButtonText: '停止服务并升级', cancelButtonText: '取消' }
       )
       const stopResult = await StopService()
+      if (stopResult.startsWith('停止失败')) {
+        // 停止失败/状态未知：不得把 serviceRunning 置为 false
+        ElMessage.error(stopResult)
+        return
+      }
       if (stopResult.includes('已停止')) {
         serviceRunning.value = false
+        if (stopResult.includes('占用')) ElMessage.warning(stopResult)
       } else {
         ElMessage.warning(stopResult)
         return
@@ -253,13 +266,31 @@ const handleStop = async () => {
   stopping.value = true
   try {
     const result = await StopService()
-    if (result.includes('已停止')) { ElMessage.success(result); serviceRunning.value = false }
-    else ElMessage.warning(result)
+    if (result.startsWith('停止失败')) {
+      // 停止失败/状态未知：不把 serviceRunning 置为 false，状态以 GetServiceStatus 为准
+      ElMessage.error(result)
+      serviceRunning.value = await GetServiceStatus()
+    } else {
+      serviceRunning.value = false
+      if (result.includes('占用')) ElMessage.warning(result)
+      else ElMessage.success(result)
+    }
   } catch (e) { ElMessage.error('停止失败: ' + e) }
   stopping.value = false
 }
 
 const handleClearLogs = () => { logs.value = [] }
+
+const handleCopyLogs = async () => {
+  if (logs.value.length === 0) {
+    ElMessage.info('日志为空')
+    return
+  }
+  try {
+    await ClipboardSetText(logs.value.join(''))
+    ElMessage.success(`已复制 ${logs.value.length} 条日志`)
+  } catch (e) { ElMessage.error('复制失败: ' + e) }
+}
 </script>
 
 <template>
@@ -372,7 +403,8 @@ const handleClearLogs = () => { logs.value = [] }
       <!-- 运行日志 -->
       <el-tab-pane label="运行日志" name="logs">
         <div class="logs-toolbar">
-          <el-button size="small" @click="handleClearLogs">清空日志</el-button>
+          <el-button size="small" @click="handleCopyLogs" :disabled="logs.length === 0">复制日志</el-button>
+          <el-button size="small" @click="handleClearLogs" :disabled="logs.length === 0">清空日志</el-button>
           <span class="log-count">共 {{ logs.length }} 条</span>
         </div>
         <div ref="logContainer" class="logs-container">

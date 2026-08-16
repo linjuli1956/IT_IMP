@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -58,6 +59,9 @@ type App struct {
 	cmd        *exec.Cmd
 	isRunning  bool
 	cmdMutex   sync.Mutex
+	// startupWarnings 记录启动期配置初始化警告（配置目录创建/旧配置迁移失败等），
+	// 由 GetStartupWarnings 暴露给前端展示，不得静默吞掉。
+	startupWarnings []string
 }
 
 // NewApp creates a new App application struct
@@ -68,10 +72,59 @@ func NewApp() *App {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.startupWarnings = nil
 	exePath, _ := os.Executable()
-	a.configPath = filepath.Join(filepath.Dir(exePath), "config.json")
+	exeDir := filepath.Dir(exePath)
+	// config.json 存放在 %APPDATA%\IT_IMP\，避免 wails build -clean 清空 bin 目录时丢失
+	appDataDir := filepath.Join(os.Getenv("APPDATA"), "IT_IMP")
+	a.configPath = filepath.Join(appDataDir, "config.json")
+
+	if err := os.MkdirAll(appDataDir, 0755); err != nil {
+		// 配置目录创建失败：回退旧版行为（EXE 同目录），并记录可见警告
+		a.configPath = filepath.Join(exeDir, "config.json")
+		a.warnStartup(fmt.Sprintf("配置目录创建失败(%v)，已回退使用 EXE 同目录 config.json", err))
+	} else if err := migrateLegacyConfig(a.configPath, filepath.Join(exeDir, "config.json")); err != nil {
+		// 迁移失败不影响启动（loadConfig 会用既有新配置或默认值），但必须可见
+		a.warnStartup(err.Error())
+	}
+
 	a.loadConfig()
 	runtime.WindowSetTitle(a.ctx, a.configToolTitle())
+}
+
+// warnStartup 记录启动期警告（前端通过 GetStartupWarnings 展示）
+func (a *App) warnStartup(msg string) {
+	a.startupWarnings = append(a.startupWarnings, msg)
+}
+
+// GetStartupWarnings 返回启动期配置初始化警告（目录创建/旧配置迁移失败等）。
+// 前端应在启动时调用并展示，确保配置问题不被静默忽略。
+func (a *App) GetStartupWarnings() []string {
+	warnings := make([]string, len(a.startupWarnings))
+	copy(warnings, a.startupWarnings)
+	return warnings
+}
+
+// migrateLegacyConfig 将旧版 EXE 同目录 config.json 迁移到新路径。
+// 规则：新路径已存在时优先新路径、不覆盖；旧路径不存在属正常首次运行；
+// 其余情况（检查/读取/写入失败）返回错误，调用方必须可见处理。
+func migrateLegacyConfig(newPath, oldPath string) error {
+	if _, err := os.Stat(newPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("检查配置文件 %s 失败: %w", newPath, err)
+	}
+	data, err := os.ReadFile(oldPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("读取旧配置 %s 失败: %w", oldPath, err)
+	}
+	if err := os.WriteFile(newPath, data, 0644); err != nil {
+		return fmt.Errorf("迁移旧配置到 %s 失败: %w", newPath, err)
+	}
+	return nil
 }
 
 // loadConfig 从文件加载配置
@@ -818,9 +871,10 @@ func (a *App) StartService() string {
 	return fmt.Sprintf("服务已启动，端口: %d", a.config.WebPort)
 }
 
-// StopService 停止Web服务
-// 使用 taskkill /F /T 强制杀整个进程树（Bun → Nuxt 子进程）
-// 避免 TerminateProcess "Access is denied" 问题
+// StopService 停止Web服务。
+// 安全约束（P1）：只终止本应用启动并可证明归属的进程树——taskkill /F /T
+// 仅以 a.cmd 根 PID 为准；绝不按端口杀任意监听进程。端口若仍被其它/未知
+// 进程占用，仅如实提示"未自动结束"，由用户确认后手动处理。
 func (a *App) StopService() string {
 	a.cmdMutex.Lock()
 	defer a.cmdMutex.Unlock()
@@ -829,26 +883,115 @@ func (a *App) StopService() string {
 		return "服务未运行"
 	}
 
-	pid := a.cmd.Process.Pid
+	port := a.config.WebPort
 
-	// Windows: 使用 taskkill 强制杀进程树
-	// /F = 强制终止, /T = 包含子进程树
+	// 场景1：根进程已自行退出（如 bun.exe 启动 node.exe 后自身退出）。
+	// 遗留孤儿进程归属已不可证明，只探测报告，不自动终止。
+	if a.cmd.ProcessState != nil {
+		a.cmd = nil
+		a.isRunning = false
+		msg := stopOutcomeMessage(port, portOccupiedPIDs(port), "Web服务进程已自行退出")
+		a.emitStopLog(msg)
+		return msg
+	}
+
+	// 场景2：终止本应用启动的进程树（/T 覆盖根 PID 的全部后代，归属明确）
+	pid := a.cmd.Process.Pid
 	killCmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
 	killCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 隐藏 CMD 黑框
-	if err := killCmd.Run(); err != nil {
-		// taskkill 失败时回退到 Process.Kill
-		if err2 := a.cmd.Process.Kill(); err2 != nil {
-			return "停止失败: " + err2.Error()
+	killOutput, killErr := killCmd.CombinedOutput()
+	if killErr != nil {
+		killMsg := strings.TrimSpace(string(killOutput))
+		if killMsg == "" {
+			killMsg = killErr.Error()
+		}
+		a.emitStopLog("taskkill 失败: " + killMsg)
+		// 回退 Process.Kill：仍只作用于本应用持有的进程句柄，归属明确；
+		// os.ErrProcessDone 表示进程其实已退出，按正常路径继续清理。
+		if err2 := a.cmd.Process.Kill(); err2 != nil && !errors.Is(err2, os.ErrProcessDone) {
+			a.emitStopLog("Process.Kill 失败: " + err2.Error())
+			// 双重终止失败：服务状态未知（大概率仍在运行），保持运行状态，
+			// 不误报已停止；前端据此不把 serviceRunning 置为 false。
+			msg := decideStopFailure(killMsg, err2.Error())
+			a.emitStopLog(msg)
+			return msg
 		}
 	}
 
-	// 等待进程完全退出，清理僵尸进程
+	// 等待根进程完全退出，清理僵尸进程
 	a.cmd.Wait()
-
 	a.cmd = nil
 	a.isRunning = false
-	runtime.EventsEmit(a.ctx, "log", fmt.Sprintf("[%s] Web服务已停止\n", timestamp()))
-	return "服务已停止"
+
+	// 进程树已终止后若端口仍被监听，仅提示归属未知，不自动结束（P1）
+	msg := stopOutcomeMessage(port, portOccupiedPIDs(port), "")
+	a.emitStopLog(msg)
+	return msg
+}
+
+// emitStopLog 向前端日志推送停止过程消息（Wails 上下文未就绪时跳过，不 panic）
+func (a *App) emitStopLog(msg string) {
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, "log", fmt.Sprintf("[%s] %s\n", timestamp(), msg))
+	}
+}
+
+// portOccupiedPIDs 探测占用指定端口的 LISTENING PID（只读探测，绝不终止进程）。
+// 停止服务后据此向用户如实报告端口占用；禁止据此自动 taskkill（P1 安全约束）。
+func portOccupiedPIDs(port int) []string {
+	out, err := exec.Command("netstat", "-ano").Output()
+	if err != nil {
+		return nil
+	}
+	return parseNetstatListeningPIDs(string(out), port)
+}
+
+// parseNetstatListeningPIDs 从 netstat -ano 输出解析监听指定端口的 PID 列表（纯函数，可单测）。
+// 输出行形如 "  TCP    0.0.0.0:3999   0.0.0.0:0    LISTENING    1234"，
+// 本地地址可能是 IPv4/IPv6（[::]:3999），去重后返回。
+func parseNetstatListeningPIDs(netstatOutput string, port int) []string {
+	portStr := fmt.Sprintf(":%d", port)
+	seen := make(map[string]bool)
+	var pids []string
+	for _, line := range strings.Split(netstatOutput, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 5 || fields[3] != "LISTENING" {
+			continue
+		}
+		// fields[1] 是本地地址，如 "0.0.0.0:3999" 或 "[::]:3999"
+		if !strings.HasSuffix(fields[1], portStr) {
+			continue
+		}
+		pidStr := fields[4]
+		if pidStr == "0" || seen[pidStr] {
+			continue
+		}
+		seen[pidStr] = true
+		pids = append(pids, pidStr)
+	}
+	return pids
+}
+
+// stopOutcomeMessage 生成停止结果消息（纯函数，可单测）。
+// prefix 用于根进程自行退出等需要说明的场景；occupied 为仍监听端口的 PID 列表。
+// 安全语义：端口仍被占用时必须明确"未自动结束"，不得声称端口已释放。
+func stopOutcomeMessage(port int, occupied []string, prefix string) string {
+	if len(occupied) == 0 {
+		if prefix != "" {
+			return prefix + "，服务已停止"
+		}
+		return "服务已停止"
+	}
+	if prefix != "" {
+		prefix += "，"
+	}
+	return fmt.Sprintf("%s服务已停止，但端口 %d 仍被其它/未知进程占用(PID: %s)，未自动结束；如非本应用遗留进程请忽略，否则请在任务管理器中手动结束", prefix, port, strings.Join(occupied, ", "))
+}
+
+// decideStopFailure 生成双重终止失败的结果消息（纯函数，可单测）。
+// 语义：服务状态未知（大概率仍在运行），不得包含"服务已停止"，前端据此保持运行状态。
+func decideStopFailure(taskkillMsg, killErr string) string {
+	return fmt.Sprintf("停止失败: 无法终止本应用启动的 Web 服务进程(taskkill: %s; Process.Kill: %s)，服务状态未知且保持为运行中，请重试或手动处理", taskkillMsg, killErr)
 }
 
 // GetServiceStatus 获取服务状态
