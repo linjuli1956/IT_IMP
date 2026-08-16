@@ -3,14 +3,14 @@
     <PageHeader
       title="预算管理"
       subtitle="门店预算矩阵与执行对比"
-      description="汇总视图：门店×月份预算矩阵，按费用范围逐月计算，每店独立行底色，≥2000元标红，按季度分隔。鼠标悬停查看费用构成，支持导出Excel（汇总+明细2个Sheet）。明细视图：按门店分组展开，查看运营商×费用类型的月费/年费/费用范围/缴费方式。执行对比：预算vs实际支出，进度条超100%标红。支持生成下个财年、新增/复制明细。"
+      description="汇总视图：门店×月份预算矩阵，按费用范围逐月计算，≥2000元高金额标红，按季度中性分隔。鼠标悬停查看费用构成，支持导出Excel（汇总+明细2个Sheet）。明细视图：按门店分组展开，查看运营商×费用类型的月费/年费/费用范围/缴费方式。执行对比：预算vs实际支出，进度条超100%标红。支持生成下个财年、新增/复制明细。"
     >
       <template #actions>
         <el-button plain @click="handleDownloadTemplate">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
-        <el-button v-if="canEdit" type="primary" plain @click="openImportDialog">
+        <el-button v-if="canEdit" plain @click="openImportDialog">
           <el-icon><Upload /></el-icon>
           导入数据
         </el-button>
@@ -59,15 +59,8 @@
             </el-button>
             <span class="tab-hint">{{ fiscalYearRangeText }}</span>
           </div>
-          <el-table :data="matrixData" border show-summary :summary-method="getSummary" :cell-class-name="getQuarterCellClass" :header-cell-class-name="getQuarterHeaderClass" :row-class-name="getMatrixRowClass" class="matrix-table">
-            <el-table-column prop="storeName" label="门店" fixed width="180" header-align="center">
-              <template #default="{ row }">
-                <div class="store-cell" :style="{ '--indicator-color': getStoreIndicatorColor(row.storeName) }">
-                  <span class="store-indicator"></span>
-                  <span>{{ row.storeName }}</span>
-                </div>
-              </template>
-            </el-table-column>
+          <el-table v-if="matrixData.length > 0" :data="matrixData" border show-summary :summary-method="getSummary" :cell-class-name="getQuarterCellClass" :header-cell-class-name="getQuarterHeaderClass" class="matrix-table">
+            <el-table-column prop="storeName" label="门店" fixed width="180" header-align="center" show-overflow-tooltip />
             <el-table-column v-for="m in currentMonths" :key="m" :prop="m" :label="getMonthLabel(m)" min-width="110" align="center">
               <template #default="{ row }">
                 <el-tooltip effect="dark" placement="top" :show-after="300" :hide-after="0">
@@ -97,6 +90,7 @@
               </template>
             </el-table-column>
           </el-table>
+          <EmptyState v-else :description="`${selectedFiscalYear}财年暂无预算数据，可切换财年或导入数据`" />
         </div>
       </el-tab-pane>
 
@@ -111,7 +105,7 @@
               <el-option v-for="s in detailStores" :key="s" :label="s" :value="s" />
             </el-select>
           </div>
-          <el-collapse v-model="expandedStores" class="detail-collapse">
+          <el-collapse v-if="groupedDetails.length > 0" v-model="expandedStores" class="detail-collapse">
             <el-collapse-item v-for="store in groupedDetails" :key="store.storeName" :name="store.storeName">
               <template #title>
                 <span class="store-title">{{ store.storeName }}</span>
@@ -134,16 +128,17 @@
                 <el-table-column prop="broadbandType" label="宽带类型" width="120" />
                 <el-table-column prop="paymentMethod" label="缴费方式" width="80" />
                 <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-                <el-table-column label="操作" width="200" fixed="right">
+                <el-table-column v-if="canEdit" label="操作" width="150" fixed="right">
                   <template #default="{ row }">
-                    <el-button size="small" @click.stop="handleDuplicateDetail(row as BudgetDetail)">复制</el-button>
-                    <el-button size="small" @click.stop="handleEditDetail(row as BudgetDetail)">编辑</el-button>
-                    <el-button size="small" type="danger" @click.stop="handleDeleteDetail(row as BudgetDetail)">删除</el-button>
+                    <el-button size="small" text type="primary" @click.stop="handleDuplicateDetail(row as BudgetDetail)">复制</el-button>
+                    <el-button size="small" text type="primary" @click.stop="handleEditDetail(row as BudgetDetail)">编辑</el-button>
+                    <el-button size="small" text type="danger" @click.stop="handleDeleteDetail(row as BudgetDetail)">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
             </el-collapse-item>
           </el-collapse>
+          <EmptyState v-else description="暂无符合条件的预算明细，可调整筛选或新增明细" />
         </div>
       </el-tab-pane>
 
@@ -176,7 +171,7 @@
               <div class="exec-stat"><span class="exec-label">超支项</span><span class="exec-val over">{{ execOverCount }} 项</span></div>
             </el-col>
           </el-row>
-          <el-table :data="filteredExecutions" border>
+          <el-table v-if="filteredExecutions.length > 0" :data="filteredExecutions" border>
             <el-table-column prop="month" label="月份" width="100" />
             <el-table-column prop="storeName" label="门店" width="140" />
             <el-table-column prop="carrier" label="运营商" width="80" />
@@ -229,6 +224,7 @@
               </template>
             </el-table-column>
           </el-table>
+          <EmptyState v-else description="暂无执行对比数据，可调整筛选条件" />
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -473,21 +469,6 @@ function getQuarterHeaderClass({ column }: { column: any }) {
   return quarterStartMonths.value.includes(monthNum) ? 'quarter-start' : ''
 }
 
-// 门店行底色（每店一色，参照支付管理服务商底色模式）
-const storeColorCount = 11
-function getMatrixRowClass({ row }: { row: any }) {
-  if (!row.storeName) return ''
-  const idx = detailStores.value.indexOf(row.storeName)
-  return idx >= 0 ? `store-row-${idx % storeColorCount}` : ''
-}
-
-// 门店标识色条颜色（与行底色关联，取行hover色=深一档）
-function getStoreIndicatorColor(storeName: string): string {
-  const idx = detailStores.value.indexOf(storeName)
-  if (idx < 0) return 'var(--border-base)'
-  return `var(--store-row-${idx % storeColorCount}-hover)`
-}
-
 // 高金额标红加粗（≥2000）
 function isHighAmount(value: number | string): boolean {
   return Number(value) >= 2000
@@ -495,6 +476,7 @@ function isHighAmount(value: number | string): boolean {
 
 // 生成下个财年
 function handleGenerateNextYear() {
+  if (!canEdit.value) return
   const nextYear = selectedFiscalYear.value + 1
   ElMessageBox.confirm(
     `将克隆 ${selectedFiscalYear.value} 财年的全部明细到 ${nextYear} 财年，之后可逐条修改差异部分。是否继续？`,
@@ -513,6 +495,7 @@ function handleGenerateNextYear() {
 
 // 删除整个财年（危险操作，需输入财年数字确认）
 async function handleDeleteFiscalYear() {
+  if (!canEdit.value) return
   const year = selectedFiscalYear.value
   try {
     const { value } = await ElMessageBox.prompt(
@@ -578,6 +561,7 @@ const detailRules = {
 }
 
 function handleAddDetail() {
+  if (!canEdit.value) return
   detailDialogTitle.value = '新增明细'
   Object.assign(detailForm, {
     id: 0, fiscalYear: selectedFiscalYear.value, storeName: '', carrier: '', feeType: '',
@@ -588,6 +572,7 @@ function handleAddDetail() {
 }
 
 function handleEditDetail(row: BudgetDetail) {
+  if (!canEdit.value) return
   detailDialogTitle.value = '编辑明细'
   Object.assign(detailForm, row)
   detailDialogVisible.value = true
@@ -596,6 +581,7 @@ function handleEditDetail(row: BudgetDetail) {
 function handleSaveDetail() {
   detailFormRef.value?.validate(async (valid: boolean) => {
     if (!valid) return
+    if (!canEdit.value) return
     saving.value = true
     try {
       if (detailForm.id === 0) {
@@ -622,6 +608,7 @@ function handleSaveDetail() {
 }
 
 function handleDeleteDetail(row: BudgetDetail) {
+  if (!canEdit.value) return
   ElMessageBox.confirm(`确定删除该明细项？(${row.storeName}-${row.carrier}-${row.feeType})`, '提示', {
     confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning',
   }).then(async () => {
@@ -643,6 +630,7 @@ const importResult = ref<{
 } | null>(null)
 
 function openImportDialog() {
+  if (!canEdit.value) return
   importDialogVisible.value = true
   importResult.value = null
   importFile.value = null
@@ -674,6 +662,7 @@ function handleImportFilesChange(files: { raw?: File }[]) {
 
 async function handleImportConfirm() {
   if (!importFile.value) return
+  if (!canEdit.value) return
   importing.value = true
   importResult.value = null
   try {
@@ -702,6 +691,7 @@ async function handleImportConfirm() {
 
 // 复制明细：打开编辑弹窗，预填被复制项数据（ID=0）
 function handleDuplicateDetail(row: BudgetDetail) {
+  if (!canEdit.value) return
   detailDialogTitle.value = `复制明细（基于：${row.storeName}-${row.carrier}-${row.feeType}）`
   Object.assign(detailForm, {
     ...row,
@@ -856,15 +846,6 @@ async function handleExportExcel() {
 .matrix-table { width: 100%; }
 .matrix-table :deep(.el-table__cell) { padding: 12px 8px; }
 
-.store-cell { display: flex; align-items: center; gap: 8px; }
-.store-indicator {
-  width: 3px;
-  height: 18px;
-  border-radius: 2px;
-  flex-shrink: 0;
-  background: var(--indicator-color, var(--border-base));
-}
-
 /* 表头：居中+加粗+放大 */
 .matrix-table :deep(.el-table__header th .cell) {
   font-size: var(--font-size-body);
@@ -904,30 +885,6 @@ async function handleExportExcel() {
 /* 季度分隔 */
 .matrix-table :deep(.quarter-start) { border-left: 1px solid var(--border-light) !important; }
 
-/* 门店行底色（每店一色，参照支付管理服务商底色模式） */
-.matrix-table :deep(.store-row-0 > td) { background: var(--store-row-0-bg) !important; }
-.matrix-table :deep(.store-row-1 > td) { background: var(--store-row-1-bg) !important; }
-.matrix-table :deep(.store-row-2 > td) { background: var(--store-row-2-bg) !important; }
-.matrix-table :deep(.store-row-3 > td) { background: var(--store-row-3-bg) !important; }
-.matrix-table :deep(.store-row-4 > td) { background: var(--store-row-4-bg) !important; }
-.matrix-table :deep(.store-row-5 > td) { background: var(--store-row-5-bg) !important; }
-.matrix-table :deep(.store-row-6 > td) { background: var(--store-row-6-bg) !important; }
-.matrix-table :deep(.store-row-7 > td) { background: var(--store-row-7-bg) !important; }
-.matrix-table :deep(.store-row-8 > td) { background: var(--store-row-8-bg) !important; }
-.matrix-table :deep(.store-row-9 > td) { background: var(--store-row-9-bg) !important; }
-.matrix-table :deep(.store-row-10 > td) { background: var(--store-row-10-bg) !important; }
-.matrix-table :deep(.store-row-0:hover > td) { background: var(--store-row-0-hover) !important; }
-.matrix-table :deep(.store-row-1:hover > td) { background: var(--store-row-1-hover) !important; }
-.matrix-table :deep(.store-row-2:hover > td) { background: var(--store-row-2-hover) !important; }
-.matrix-table :deep(.store-row-3:hover > td) { background: var(--store-row-3-hover) !important; }
-.matrix-table :deep(.store-row-4:hover > td) { background: var(--store-row-4-hover) !important; }
-.matrix-table :deep(.store-row-5:hover > td) { background: var(--store-row-5-hover) !important; }
-.matrix-table :deep(.store-row-6:hover > td) { background: var(--store-row-6-hover) !important; }
-.matrix-table :deep(.store-row-7:hover > td) { background: var(--store-row-7-hover) !important; }
-.matrix-table :deep(.store-row-8:hover > td) { background: var(--store-row-8-hover) !important; }
-.matrix-table :deep(.store-row-9:hover > td) { background: var(--store-row-9-hover) !important; }
-.matrix-table :deep(.store-row-10:hover > td) { background: var(--store-row-10-hover) !important; }
-
 /* 合计行 */
 .matrix-table :deep(.el-table__footer-wrapper) .el-table__cell {
   font-weight: 700; background: var(--bg-page) !important;
@@ -955,7 +912,7 @@ async function handleExportExcel() {
 
 /* 执行对比 tooltip */
 .exec-breakdown { min-width: 220px; max-width: 320px; }
-.exec-breakdown .text-over { color: #F89898; }
+.exec-breakdown .text-over { color: var(--color-danger); }
 
 /* 预算 Excel 导入弹窗 */
 .import-alert { margin-bottom: var(--spacing-card); }
