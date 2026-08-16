@@ -56,7 +56,7 @@ MySQL 鐨勮繙绋?root 鏉冮檺鍙湪绌烘暟鎹洰褰曢娆″垵�
 榛樿闀滃儚鏄?`linjuli2026/it-imp-web:latest`銆傝嫢瑕佸浐瀹氬埌鏌愭鏃ユ湡鍙戝竷锛屽皢 `web` 鏈嶅姟鐨勯暅鍍忔敼涓猴細
 
 ```yaml
-image: linjuli2026/it-imp-web:20260810
+image: linjuli2026/it-imp-web:20260816
 ```
 
 鏇存柊鏈€鏂伴暅鍍忥細

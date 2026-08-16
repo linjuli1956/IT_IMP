@@ -2,7 +2,7 @@
 
 一个可自托管的综合管理平台。项目维护一套 `web/` 业务源码，并提供 Windows EXE 与 Docker Compose 两种部署方式。
 
-当前发布日期版本：`20260810`。
+当前发布日期版本：`20260816`。
 
 ## Docker Compose（推荐）
 
@@ -34,7 +34,7 @@ docker compose up -d
 .\desktop\build-release.ps1
 ```
 
-发布包位于 `desktop/build/release/IT_IMP-20260810/`，配置工具默认显示“综合管理平台-配置工具 20260810”。
+发布包位于 `desktop/build/release/IT_IMP-20260816/`，配置工具默认显示“综合管理平台-配置工具 20260816”。
 
 > 发布脚本会自动寻找本机 Bun（`BUN_EXE` 环境变量 → `~/.bun/bin/bun.exe` → PATH）并复制进发布包的 `bun/` 目录；若本机未安装 Bun，请先安装：`powershell -c "irm bun.sh/install.ps1 | iex"`。
 
