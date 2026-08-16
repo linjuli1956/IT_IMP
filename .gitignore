@@ -43,6 +43,9 @@ data/logs/*
 *.log
 /logs/
 !/logs/.gitkeep
+# web 构建日志/安装日志等临时输出（build-full.txt、build-out.txt、install-sass.txt、server-log.txt 等），
+# 防止 git add . 误纳入公开仓库
+web/*.txt
 
 # ---- 环境变量与密钥 ----
 .env
