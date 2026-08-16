@@ -22,6 +22,10 @@ export function GetServiceStatus() {
   return window['go']['main']['App']['GetServiceStatus']();
 }
 
+export function GetStartupWarnings() {
+  return window['go']['main']['App']['GetStartupWarnings']();
+}
+
 export function InitDatabase(arg1, arg2) {
   return window['go']['main']['App']['InitDatabase'](arg1, arg2);
 }

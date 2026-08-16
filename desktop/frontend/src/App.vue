@@ -10,6 +10,7 @@ import {
 import { EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime'
 import InitialAdminConfig from './components/InitialAdminConfig.vue'
 import DatabaseStatusSummary from './components/DatabaseStatusSummary.vue'
+import { isStopFailed, isPortOccupiedUnknown, isServiceStoppedClean } from './stop-service-protocol.js'
 
 const dbConfig = ref({ host: '', port: 3306, username: 'root', password: '', dbname: 'it_imp' })
 const passwordConfigured = ref(false)
@@ -170,14 +171,20 @@ const handleUpgradeDatabase = async () => {
         { type: 'warning', confirmButtonText: '停止服务并升级', cancelButtonText: '取消' }
       )
       const stopResult = await StopService()
-      if (stopResult.startsWith('停止失败')) {
+      if (isStopFailed(stopResult)) {
         // 停止失败/状态未知：不得把 serviceRunning 置为 false
         ElMessage.error(stopResult)
         return
       }
-      if (stopResult.includes('已停止')) {
+      if (isPortOccupiedUnknown(stopResult)) {
+        // P1-2：端口仍被其它/未知进程占用，状态不明，禁止继续升级数据库，
+        // 需用户先确认并手动处理占用进程后重新发起
         serviceRunning.value = false
-        if (stopResult.includes('占用')) ElMessage.warning(stopResult)
+        ElMessage.warning(`${stopResult}\n请先确认并手动处理占用进程，再重新发起数据库升级`)
+        return
+      }
+      if (isServiceStoppedClean(stopResult)) {
+        serviceRunning.value = false
       } else {
         ElMessage.warning(stopResult)
         return
@@ -266,13 +273,13 @@ const handleStop = async () => {
   stopping.value = true
   try {
     const result = await StopService()
-    if (result.startsWith('停止失败')) {
+    if (isStopFailed(result)) {
       // 停止失败/状态未知：不把 serviceRunning 置为 false，状态以 GetServiceStatus 为准
       ElMessage.error(result)
       serviceRunning.value = await GetServiceStatus()
     } else {
       serviceRunning.value = false
-      if (result.includes('占用')) ElMessage.warning(result)
+      if (isPortOccupiedUnknown(result)) ElMessage.warning(result)
       else ElMessage.success(result)
     }
   } catch (e) { ElMessage.error('停止失败: ' + e) }

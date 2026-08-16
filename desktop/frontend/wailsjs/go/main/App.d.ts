@@ -12,6 +12,8 @@ export function GetDatabaseStatus():Promise<main.DatabaseStatus>;
 
 export function GetServiceStatus():Promise<boolean>;
 
+export function GetStartupWarnings():Promise<Array<string>>;
+
 export function InitDatabase(arg1:string,arg2:string):Promise<string>;
 
 export function ProvisionInitialAdmin(arg1:string,arg2:string):Promise<string>;
