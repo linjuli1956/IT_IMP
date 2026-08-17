@@ -123,9 +123,12 @@ Copy-Item (Join-Path $desktopSourceDirectory "build\bin\platform-config.exe") (J
 # 注意：不复制 config.json —— 它含用户数据库密码等敏感配置，且只应在首次运行配置工具时于目标机生成
 Copy-Item $stagedBunExecutable (Join-Path $releaseBunDirectory "bun.exe")
 
-foreach ($directoryName in @(".output", "generated", "node_modules", "prisma", "scripts")) {
+foreach ($directoryName in @(".output", "generated", "node_modules", "prisma")) {
     Copy-Item (Join-Path $webDirectory $directoryName) (Join-Path $releaseWebDirectory $directoryName) -Recurse -Force
 }
+# 运行时仅需要 bootstrap-admin.mjs（首次启动引导管理员账号），截图/演示等开发脚本不进发布包
+New-Item -ItemType Directory -Path (Join-Path $releaseWebDirectory "scripts") -Force | Out-Null
+Copy-Item (Join-Path $webDirectory "scripts\bootstrap-admin.mjs") (Join-Path $releaseWebDirectory "scripts\bootstrap-admin.mjs") -Force
 foreach ($fileName in @("package.json", "package-lock.json", "prisma.config.ts", "nuxt.config.ts")) {
     Copy-Item (Join-Path $webDirectory $fileName) (Join-Path $releaseWebDirectory $fileName) -Force
 }

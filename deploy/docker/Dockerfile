@@ -30,7 +30,8 @@ COPY --from=builder /app/web/node_modules ./node_modules
 COPY --from=builder /app/web/package.json ./package.json
 COPY --from=builder /app/web/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/web/prisma ./prisma
-COPY --from=builder /app/web/scripts ./scripts
+# 运行时仅需要 bootstrap-admin.mjs（首次启动引导管理员账号），截图/演示等开发脚本不进镜像
+COPY --from=builder /app/web/scripts/bootstrap-admin.mjs ./scripts/bootstrap-admin.mjs
 
 RUN mkdir -p \
     /app/data/uploads/invoices \
