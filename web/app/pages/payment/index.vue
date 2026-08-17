@@ -3,7 +3,7 @@
     <PageHeader
       title="支付管理"
       subtitle="门店支付配置与服务商管理"
-      description="管理各门店支付方式的商户号、密钥、APPID等配置项，支持自定义支付方式与服务商。敏感信息默认脱敏显示，点击眼睛图标可切换。每列列头可筛选，勾选多行后可批量复制（Tab分隔，可粘贴Excel；敏感配置值以脱敏形式复制，不泄露明文）。"
+      description="管理各门店支付方式的商户号、密钥、APPID等配置项，支持自定义支付方式与服务商。敏感信息默认脱敏显示，点击眼睛图标可显式查看（需管理员/操作员权限）。每列列头可筛选，勾选多行后可批量复制（Tab分隔，可粘贴Excel；敏感配置值以脱敏形式复制，不泄露明文）。"
     >
       <template v-if="canWrite" #actions>
         <el-button type="primary" @click="handleAddConfig">
@@ -66,14 +66,16 @@
         </template>
         <template #configValue="{ row }">
           <div class="value-cell">
-            <span class="value-text" :class="{ masked: row.isSensitive && !revealedIds.has(row.id) }">
-              {{ row.isSensitive && !revealedIds.has(row.id) ? maskValue(row.configValue) : row.configValue }}
-            </span>
-            <el-icon v-if="row.isSensitive" class="toggle-icon" @click="toggleReveal(row.id)">
-              <View v-if="!revealedIds.has(row.id)" />
-              <Hide v-else />
-            </el-icon>
-            <el-icon v-else class="lock-icon"><Lock /></el-icon>
+            <!-- 敏感配置值不随列表下发明文，点击眼睛时显式请求 -->
+            <SensitiveValue
+              v-if="row.isSensitive"
+              :configured="row.sensitiveConfigured"
+              :reveal="canWrite ? () => fetchConfigValue(row.id) : undefined"
+            />
+            <template v-else>
+              <span class="value-text">{{ row.configValue }}</span>
+              <el-icon class="lock-icon"><Lock /></el-icon>
+            </template>
           </div>
         </template>
         <template #status="{ row }">
@@ -138,7 +140,7 @@
             v-model="configForm.configValue"
             :type="configForm.isSensitive ? 'password' : 'text'"
             :show-password="configForm.isSensitive"
-            placeholder="请输入配置值"
+            :placeholder="configForm.id === 0 ? '请输入配置值' : '留空则不修改'"
           />
         </el-form-item>
         <el-form-item label="是否敏感">
@@ -164,7 +166,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, View, Hide, Lock, Shop, Setting, CircleCheck, CircleClose,
+  Plus, Lock, Shop, Setting, CircleCheck, CircleClose,
 } from '@element-plus/icons-vue'
 import { buildPaymentPreviewRows } from '~/utils/preview-utils'
 import {
@@ -175,7 +177,7 @@ import {
 
 const {
   configItems, loading, paymentStatusOptions,
-  fetchConfigItems, addConfigItem, updateConfigItem, deleteConfigItem,
+  fetchConfigItems, addConfigItem, updateConfigItem, deleteConfigItem, fetchConfigValue,
 } = usePaymentData()
 
 // 权限：新增/编辑/删除需管理员/操作员（对齐后端 /api/payments POST/PUT/DELETE）
@@ -267,25 +269,6 @@ const filteredConfigItems = computed(() => {
   })
 })
 
-// 敏感值显示/隐藏
-const revealedIds = ref<Set<number>>(new Set())
-
-function toggleReveal(id: number) {
-  if (revealedIds.value.has(id)) {
-    revealedIds.value.delete(id)
-  } else {
-    revealedIds.value.add(id)
-  }
-  revealedIds.value = new Set(revealedIds.value)
-}
-
-
-
-function maskValue(value: string): string {
-  if (value.length <= 8) return '••••••••'
-  return value.substring(0, 4) + '••••••••' + value.substring(value.length - 4)
-}
-
 // 配置弹窗
 const configDialogVisible = ref(false)
 const configDialogTitle = ref('')
@@ -313,15 +296,16 @@ function getPayMethodTagAttrs(_method: string): Record<string, any> {
   return { type: 'info' }
 }
 
-const configRules = {
+const configRules = computed(() => ({
   storeId: [{ required: true, message: '请选择门店（自动带出机构代码）', trigger: 'blur' }],
   storeName: [{ required: true, message: '请选择门店', trigger: 'change' }],
   payMethod: [{ required: true, message: '请选择支付方式', trigger: 'change' }],
   provider: [{ required: true, message: '请选择服务商', trigger: 'change' }],
   configName: [{ required: true, message: '请输入配置项名称', trigger: 'blur' }],
-  configValue: [{ required: true, message: '请输入配置值', trigger: 'blur' }],
+  // 编辑时留空表示不修改（后端剔除空值），仅新增必填
+  configValue: configForm.id === 0 ? [{ required: true, message: '请输入配置值', trigger: 'blur' }] : [],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
-}
+}))
 
 function onStoreChange(storeName: string) {
   const store = storeList.value.find(s => s.name === storeName)
@@ -350,7 +334,8 @@ function handleAddConfig() {
 function handleEditConfig(row: any) {
   const c = row as PaymentConfigItem
   configDialogTitle.value = '编辑配置'
-  Object.assign(configForm, c)
+  // 敏感配置值列表不下发明文：编辑时留空表示不修改
+  Object.assign(configForm, c, { configValue: c.isSensitive ? '' : (c.configValue ?? '') })
   configDialogVisible.value = true
 }
 
@@ -417,8 +402,8 @@ function handleBatchCopy(rows: any[]) {
     payMethodMap[row.payMethod]?.name || row.payMethod,
     row.provider,
     row.configName,
-    // 敏感配置值以脱敏形式复制（与页面默认显示一致），不向剪贴板输出明文密钥
-    row.isSensitive ? maskValue(row.configValue) : row.configValue,
+    // 敏感配置值列表不再下发明文：以固定掩码复制，不向剪贴板输出明文密钥
+    row.isSensitive ? '••••••••' : row.configValue,
     row.isSensitive ? '敏感' : '普通',
     row.status,
   ].join('\t'))

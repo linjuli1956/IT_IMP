@@ -4,9 +4,11 @@
  * 请求头: Authorization: Bearer xxx (需管理员或操作员)
  * 请求体: { domain, mainAccount, mainPassword, certType?, certIssuer?, certRenewDate?, certExpireDate?, remark?, status? }
  * 必填: domain, mainAccount, mainPassword
+ * 成功返回: Domain DTO（不含 mainPassword）
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
+import { toDomainDto } from '../../utils/sensitive-dto'
 import { readBody, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -49,5 +51,5 @@ export default defineEventHandler(async (event: H3Event) => {
     },
   })
 
-  return record
+  return toDomainDto(record)
 })

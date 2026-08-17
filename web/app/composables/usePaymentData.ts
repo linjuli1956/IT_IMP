@@ -72,6 +72,13 @@ async function deleteConfigItem(id: number) {
   await fetchConfigItems()
 }
 
+/** 显式查看配置值（管理员/操作员；查看者 403）——敏感值唯一明文出口 */
+async function fetchConfigValue(id: number): Promise<string> {
+  const { post } = useApi()
+  const { configValue } = await post<{ configValue: string }>(`/api/payments/${id}/config-value`, { action: 'view' })
+  return configValue || ''
+}
+
 // ====== 导出 ======
 
 export function usePaymentData() {
@@ -87,5 +94,6 @@ export function usePaymentData() {
     addConfigItem,
     updateConfigItem,
     deleteConfigItem,
+    fetchConfigValue,
   }
 }

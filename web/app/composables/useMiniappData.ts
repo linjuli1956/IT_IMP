@@ -49,6 +49,13 @@ async function deleteMiniapp(id: number) {
   await fetchMiniapps()
 }
 
+/** 显式查看邮箱密码（管理员/操作员；查看者 403）——沿服务器凭据模式 */
+async function fetchMiniappPassword(id: number): Promise<string> {
+  const { post } = useApi()
+  const { emailPassword } = await post<{ emailPassword: string }>(`/api/miniapps/${id}/password`, { action: 'view' })
+  return emailPassword || ''
+}
+
 // ====== 导出 ======
 
 export function useMiniappData() {
@@ -60,5 +67,6 @@ export function useMiniappData() {
     addMiniapp,
     updateMiniapp,
     deleteMiniapp,
+    fetchMiniappPassword,
   }
 }

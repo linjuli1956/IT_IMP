@@ -82,7 +82,7 @@
           </RecordPreviewTooltip>
         </template>
         <template #emailPassword="{ row }">
-          <SensitiveValue :value="row.emailPassword" />
+          <SensitiveValue :configured="row.emailPasswordSet" :reveal="canEdit ? () => fetchMiniappPassword(row.id) : undefined" />
         </template>
         <template #status="{ row }">
           <el-tag :type="row.status === '正常' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
@@ -108,7 +108,7 @@
         </el-descriptions-item>
         <el-descriptions-item label="状态">{{ currentRow.status }}</el-descriptions-item>
         <el-descriptions-item label="绑定邮箱">{{ currentRow.email || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="邮箱密码"><SensitiveValue :value="currentRow.emailPassword" /></el-descriptions-item>
+        <el-descriptions-item label="邮箱密码"><SensitiveValue :configured="currentRow.emailPasswordSet" :reveal="canEdit ? () => fetchMiniappPassword(currentRow?.id ?? 0) : undefined" /></el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ currentRow.remark || '—' }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -128,7 +128,7 @@
           <el-input v-model="formData.email" placeholder="如：demo@example.invalid" />
         </el-form-item>
         <el-form-item label="邮箱密码" prop="emailPassword">
-          <el-input v-model="formData.emailPassword" type="password" show-password placeholder="请输入邮箱密码" />
+          <el-input v-model="formData.emailPassword" type="password" show-password :placeholder="formData.id === 0 ? '请输入邮箱密码' : '留空则不修改'" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="formData.status">
@@ -158,7 +158,7 @@ import { useClipboard } from '~/composables/useClipboard'
 import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
-const { miniappList, loading, miniappStatusOptions, fetchMiniapps, addMiniapp, updateMiniapp, deleteMiniapp } = useMiniappData()
+const { miniappList, loading, miniappStatusOptions, fetchMiniapps, addMiniapp, updateMiniapp, deleteMiniapp, fetchMiniappPassword } = useMiniappData()
 
 // —— 视图模式切换：默认卡片总览 ——
 const viewMode = ref<'card' | 'list'>('card')
@@ -257,12 +257,13 @@ const formData = reactive<MiniappItem>({
   id: 0, name: '', email: '', emailPassword: '', remark: '', status: '正常',
 })
 
-const rules = {
+const rules = computed(() => ({
   name: [{ required: true, message: '请输入小程序名称', trigger: 'blur' }],
   email: [{ required: true, message: '请输入绑定邮箱', trigger: 'blur' }],
-  emailPassword: [{ required: true, message: '请输入邮箱密码', trigger: 'blur' }],
+  // 编辑时密码留空表示不修改（后端同样剔除空值），仅新增必填
+  emailPassword: formData.id === 0 ? [{ required: true, message: '请输入邮箱密码', trigger: 'blur' }] : [],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
-}
+}))
 
 function handleAdd() {
   dialogTitle.value = '新增小程序'
@@ -272,7 +273,8 @@ function handleAdd() {
 
 function handleEdit(row: MiniappItem) {
   dialogTitle.value = '编辑小程序'
-  Object.assign(formData, row)
+  // 列表不再下发明文：编辑时密码留空表示不修改
+  Object.assign(formData, row, { emailPassword: '' })
   dialogVisible.value = true
 }
 

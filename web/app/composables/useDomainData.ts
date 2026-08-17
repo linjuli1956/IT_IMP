@@ -63,6 +63,13 @@ async function deleteDomain(id: number) {
   await fetchDomains()
 }
 
+/** 显式查看主账号密码（管理员/操作员；查看者 403）——沿服务器凭据模式 */
+async function fetchDomainPassword(id: number): Promise<string> {
+  const { post } = useApi()
+  const { mainPassword } = await post<{ mainPassword: string }>(`/api/domains/${id}/password`, { action: 'view' })
+  return mainPassword || ''
+}
+
 // ====== 导出 ======
 
 export function useDomainData() {
@@ -76,5 +83,6 @@ export function useDomainData() {
     addDomain,
     updateDomain,
     deleteDomain,
+    fetchDomainPassword,
   }
 }

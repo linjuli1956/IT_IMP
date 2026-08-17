@@ -136,6 +136,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { openFilePreview, downloadFile } from '~/utils/file-download'
 
 const { storeOptions } = useStoreData()
 const { invoiceList, deleteInvoice, deleteInvoices, fetchInvoices, loading } = useInvoiceData()
@@ -236,28 +237,30 @@ function getStatusType(status: string): 'primary' | 'success' | 'warning' | 'inf
   return map[status] || 'info'
 }
 
-// 查看发票（新窗口打开PDF预览）
-function handleView(row: any) {
+// 查看发票（新窗口打开PDF预览；/files/** 需登录，带 Authorization 取回 Blob 后预览）
+async function handleView(row: any) {
   if (!row.filePath) {
     ElMessage.warning('该发票没有关联的PDF文件')
     return
   }
-  window.open(row.filePath, '_blank')
+  try {
+    await openFilePreview(row.filePath)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
 }
 
-// 下载发票
-function handleDownload(row: any) {
+// 下载发票（Blob → a[download]，避免匿名直链被 401）
+async function handleDownload(row: any) {
   if (!row.filePath) {
     ElMessage.warning('该发票没有关联的PDF文件')
     return
   }
-  const link = document.createElement('a')
-  link.href = row.filePath
-  link.download = row.name
-  link.target = '_blank'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  try {
+    await downloadFile(row.filePath, row.name)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
 }
 
 // 单张打印（PDF.js渲染预览）

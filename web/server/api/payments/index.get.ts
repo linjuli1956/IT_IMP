@@ -3,10 +3,11 @@
  * GET /api/payments
  * 请求头: Authorization: Bearer xxx
  * 查询参数: ?storeName=&payMethod=&provider=（可选筛选）
- * 成功返回: PaymentConfig[]，按 id 升序
+ * 成功返回: PaymentConfig DTO[]（isSensitive=true 时不含 configValue，附带 sensitiveConfigured 标记），按 id 升序
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole } from '../../utils/auth'
+import { toPaymentDto } from '../../utils/sensitive-dto'
 import { getQuery, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -22,8 +23,8 @@ export default defineEventHandler(async (event: H3Event) => {
   if (payMethod) where.payMethod = payMethod
   if (provider) where.provider = provider
 
-  return await prisma.paymentConfig.findMany({
+  return (await prisma.paymentConfig.findMany({
     where,
     orderBy: { id: 'asc' },
-  })
+  })).map(toPaymentDto)
 })

@@ -91,7 +91,7 @@
           <SensitiveValue :value="row.mainAccount" />
         </template>
         <template #mainPassword="{ row }">
-          <SensitiveValue :value="row.mainPassword" />
+          <SensitiveValue :configured="row.mainPasswordSet" :reveal="canEdit ? () => fetchDomainPassword(row.id) : undefined" />
         </template>
         <template #certType="{ row }">
           <el-tag :type="(certTypeTagMap[row.certType] as any) || 'info'" size="small">{{ row.certType || '—' }}</el-tag>
@@ -135,7 +135,7 @@
         <el-descriptions-item label="更换日期">{{ currentRow.certRenewDate || '—' }}</el-descriptions-item>
         <el-descriptions-item label="到期日期">{{ currentRow.certExpireDate || '—' }}</el-descriptions-item>
         <el-descriptions-item label="主账号"><SensitiveValue :value="currentRow.mainAccount" /></el-descriptions-item>
-        <el-descriptions-item label="主账号密码"><SensitiveValue :value="currentRow.mainPassword" /></el-descriptions-item>
+        <el-descriptions-item label="主账号密码"><SensitiveValue :configured="currentRow.mainPasswordSet" :reveal="canEdit ? () => fetchDomainPassword(currentRow?.id ?? 0) : undefined" /></el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ currentRow.remark || '—' }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -159,7 +159,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="主账号密码" prop="mainPassword">
-              <el-input v-model="formData.mainPassword" type="password" show-password placeholder="请输入主账号密码" />
+              <el-input v-model="formData.mainPassword" type="password" show-password :placeholder="formData.id === 0 ? '请输入主账号密码' : '留空则不修改'" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -217,7 +217,7 @@ import { useClipboard } from '~/composables/useClipboard'
 import { exportCurrentPageCsv, type CsvColumn } from '~/utils/csv-export'
 import type { ServiceTag, ServiceField } from '~/components/common/ServiceAssetCard.vue'
 
-const { domainList, loading, domainStatusOptions, fetchDomains, addDomain, updateDomain, deleteDomain } = useDomainData()
+const { domainList, loading, domainStatusOptions, fetchDomains, addDomain, updateDomain, deleteDomain, fetchDomainPassword } = useDomainData()
 
 // — 复制（不依赖 canEdit，查看者可复制白名单字段）—
 const { copy } = useClipboard()
@@ -386,12 +386,13 @@ const formData = reactive<DomainItem>({
   remark: '', status: '正常',
 })
 
-const rules = {
+const rules = computed(() => ({
   domain: [{ required: true, message: '请输入域名', trigger: 'blur' }],
   mainAccount: [{ required: true, message: '请输入主账号', trigger: 'blur' }],
-  mainPassword: [{ required: true, message: '请输入主账号密码', trigger: 'blur' }],
+  // 编辑时密码留空表示不修改（后端同样剔除空值），仅新增必填
+  mainPassword: formData.id === 0 ? [{ required: true, message: '请输入主账号密码', trigger: 'blur' }] : [],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
-}
+}))
 
 function handleAdd() {
   dialogTitle.value = '新增域名'
@@ -405,7 +406,8 @@ function handleAdd() {
 
 function handleEdit(row: DomainItem) {
   dialogTitle.value = '编辑域名'
-  Object.assign(formData, row)
+  // 列表不再下发密码明文：编辑时密码留空表示不修改（后端剔除空值字段）
+  Object.assign(formData, row, { mainPassword: '' })
   dialogVisible.value = true
 }
 

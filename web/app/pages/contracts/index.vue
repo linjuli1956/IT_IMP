@@ -142,6 +142,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Document, Close } from '@element-plus/icons-vue'
 import { useContractData, getContractStatus, getDaysLeft, contractTypes, type Contract } from '~/composables/useContractData'
+import { openFilePreview } from '~/utils/file-download'
 
 const { contractList, loading, fetchContracts, addContract, updateContract, deleteContract } = useContractData()
 
@@ -314,9 +315,14 @@ async function handleBatchDelete(rows: Contract[]) {
   ElMessage.success(`已删除 ${rows.length} 项`)
 }
 
-function handleViewFile(row: Contract) {
+async function handleViewFile(row: Contract) {
   if (row.filePath) {
-    window.open(row.filePath, '_blank')
+    // /files/** 需登录：带 Authorization 取回 Blob 后预览，不再直接 window.open
+    try {
+      await openFilePreview(row.filePath)
+    } catch (error) {
+      ElMessage.error((error as Error).message)
+    }
   } else {
     ElMessage.info(`查看合同附件：${row.fileName}`)
   }

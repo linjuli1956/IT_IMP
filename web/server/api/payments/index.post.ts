@@ -4,9 +4,11 @@
  * 请求头: Authorization: Bearer xxx (需管理员或操作员)
  * 请求体: { storeId, storeName, payMethod, payMethodName, provider, configName, configValue, posNo?, status?, isSensitive? }
  * 必填: storeId, storeName, payMethod, provider, configName, configValue
+ * 成功返回: PaymentConfig DTO（isSensitive=true 时不含 configValue）
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
+import { toPaymentDto } from '../../utils/sensitive-dto'
 import { readBody, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -59,5 +61,5 @@ export default defineEventHandler(async (event: H3Event) => {
     },
   })
 
-  return config
+  return toPaymentDto(config)
 })

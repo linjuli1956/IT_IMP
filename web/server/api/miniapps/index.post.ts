@@ -4,9 +4,11 @@
  * 请求头: Authorization: Bearer xxx (需管理员或操作员)
  * 请求体: { name, email, emailPassword, remark?, status? }
  * 必填: name, email, emailPassword
+ * 成功返回: Miniapp DTO（不含 emailPassword）
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
+import { toMiniappDto } from '../../utils/sensitive-dto'
 import { readBody, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -45,5 +47,5 @@ export default defineEventHandler(async (event: H3Event) => {
     },
   })
 
-  return miniapp
+  return toMiniappDto(miniapp)
 })

@@ -4,6 +4,7 @@
  * 依赖：pdfjs-dist（立项规划的业务库，按需引入）
  * 原理：PDF → canvas图片 → HTML打印窗口 → CSS @media print A5排版 → window.print()
  */
+import { fetchFileBlob } from '~/utils/file-download'
 
 export function usePdfPrint() {
   /**
@@ -23,7 +24,9 @@ export function usePdfPrint() {
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
-    const loadingTask = pdfjsLib.getDocument({ url })
+    // /files/** 需登录：先带 Authorization 取回文件，再交给 pdf.js 解析（URL 直连会 401）
+    const blob = await fetchFileBlob(url)
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) })
     const pdf = await loadingTask.promise
     const images: string[] = []
 
