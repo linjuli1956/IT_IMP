@@ -8,6 +8,19 @@ $webDirectory = Join-Path $desktopDirectory "web"
 $desktopSourceDirectory = Join-Path $desktopDirectory "desktop"
 $versionFile = Join-Path $desktopDirectory "VERSION"
 
+# === fail-fast helper ===
+function Check-ExitCode {
+    param($Code)
+    if ($Code -ne 0) {
+        Write-Error "外部命令退出码：$Code。构建中止，不生成/保留发布包。"
+        # 尽可能移除半生成的包目录
+        if (-not [string]::IsNullOrWhiteSpace($OutputDirectory) -and (Test-Path -LiteralPath $OutputDirectory)) {
+            Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        throw "外部命令失败：$code"
+    }
+}
+
 if (-not (Test-Path -LiteralPath $versionFile)) {
     throw "Version file was not found: $versionFile"
 }
@@ -71,17 +84,29 @@ Copy-Item -LiteralPath $bunExecutable -Destination $stagedBunExecutable -Force
 
 Write-Host "[1/5] Installing web dependencies and generating Prisma Client"
 npm.cmd --prefix $webDirectory ci
-npx.cmd --prefix $webDirectory prisma generate
+Check-ExitCode $LASTEXITCODE
+
+# Prisma generate 必须在 webDirectory 中执行（--prefix 不切换 cwd）
+$currentDir = Get-Location
+Push-Location $webDirectory
+try {
+    npx.cmd prisma generate
+    Check-ExitCode $LASTEXITCODE
+} finally {
+    Pop-Location
+    Set-Location $currentDir
+}
 
 Write-Host "[2/5] Building Nuxt server"
 npm.cmd --prefix $webDirectory run build
+Check-ExitCode $LASTEXITCODE
 
 Write-Host "[3/5] Building Wails EXE"
 Push-Location $desktopSourceDirectory
 try {
     & $wailsExecutable build -clean -ldflags ("-X main.BuildVersion=" + $releaseVersion)
-}
-finally {
+    Check-ExitCode $LASTEXITCODE
+} finally {
     Pop-Location
 }
 
