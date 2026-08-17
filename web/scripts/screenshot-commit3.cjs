@@ -14,6 +14,14 @@ if (!fs.existsSync(SHOT_DIR)) {
   fs.mkdirSync(SHOT_DIR, { recursive: true });
 }
 
+// ——— 管理员账户（环境变量，不硬编码）——
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  console.error('错误：需要环境变量 ADMIN_USERNAME 和 ADMIN_PASSWORD（不内置默认凭据）');
+  process.exit(1);
+}
+
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
@@ -32,7 +40,7 @@ async function login(page) {
       return { success: true };
     }
     return { success: false, error: data.message || 'Unknown' };
-  }, { username: 'admin', password: '123456' });
+  }, { username: ADMIN_USERNAME, password: ADMIN_PASSWORD });
 
   console.log('  API 登录:', result.success ? '成功' : '失败 - ' + result.error);
   if (!result.success) throw new Error('Login failed: ' + result.error);

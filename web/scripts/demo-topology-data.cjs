@@ -13,8 +13,9 @@
  *   BASE_URL        — Nuxt 服务器地址（无默认值，必须显式传入）
  *   CONFIRM_TEST_DB — 必须为 YES 才允许执行写入操作
  *
- * 可选环境变量：
- *   ADMIN_TOKEN  — 管理员 JWT（优先使用；若不提供则用 admin/123456 登录）
+ * 可选环境变量（三选一，均未提供时脚本直接报错退出，不内置任何默认凭据）：
+ *   ADMIN_TOKEN — 管理员 JWT（优先使用）
+ *   或显式提供 ADMIN_USERNAME / ADMIN_PASSWORD 登录获取
  *
  * 验收完成后，运行 clean-topology-demo.cjs 清理演示数据。
  */
@@ -48,10 +49,15 @@ async function assertOk(resp, label) {
 
 async function getOrLogin() {
   if (ADMIN_TOKEN) return ADMIN_TOKEN;
+  const username = process.env.ADMIN_USERNAME || '';
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!username || !password) {
+    throw new Error('缺少管理员凭据：请设置 ADMIN_TOKEN，或显式设置 ADMIN_USERNAME / ADMIN_PASSWORD');
+  }
   const resp = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: '123456' }),
+    body: JSON.stringify({ username, password }),
   });
   await assertOk(resp, '登录');
   return (await resp.json()).token;

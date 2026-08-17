@@ -9,7 +9,7 @@
  * 前置条件：
  *   1. 可用的 MySQL/MariaDB 测试库（非生产库），已执行 prisma migrate / db push
  *   2. Nuxt 服务器运行在 BASE_URL 指定地址
- *   3. 已有管理员账号（admin/123456 或通过 ADMIN_TOKEN 环境变量传入 JWT）
+ *   3. 管理员凭据：ADMIN_TOKEN，或 ADMIN_USERNAME / ADMIN_PASSWORD 环境变量
  *
  * 用法：
  *   BASE_URL=http://127.0.0.1:3000 CONFIRM_TEST_DB=YES node scripts/test-link-concurrency.cjs
@@ -18,9 +18,10 @@
  *   BASE_URL        — Nuxt 服务器地址（无默认值，必须显式传入）
  *   CONFIRM_TEST_DB — 必须为 YES 才允许执行写入操作
  *
- * 可选环境变量：
- *   ADMIN_TOKEN  — 管理员 JWT（优先使用；若不提供则用 admin/123456 登录）
- *   ROUNDS       — 连续执行轮数（默认 5）
+ * 可选环境变量（凭据三选一，均未提供时脚本直接报错退出，不内置任何默认凭据）：
+ *   ADMIN_TOKEN — 管理员 JWT（优先使用）
+ *   或显式提供 ADMIN_USERNAME / ADMIN_PASSWORD 登录获取
+ *   ROUNDS      — 连续执行轮数（默认 5）
  *
  * fixture 命名：所有门店/设备/连线均带 runId（时间戳+随机串），
  * 即使上轮异常残留，也不会阻塞下一轮创建。
@@ -69,11 +70,16 @@ async function assertOk(resp, label) {
 
 async function getOrLogin() {
   if (ADMIN_TOKEN) return ADMIN_TOKEN;
-  console.log('尝试登录获取 token (admin/123456)...');
+  const username = process.env.ADMIN_USERNAME || '';
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!username || !password) {
+    throw new Error('缺少管理员凭据：请设置 ADMIN_TOKEN，或显式设置 ADMIN_USERNAME / ADMIN_PASSWORD');
+  }
+  console.log('使用 ADMIN_USERNAME / ADMIN_PASSWORD 登录获取 token...');
   const resp = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: '123456' }),
+    body: JSON.stringify({ username, password }),
   });
   await assertOk(resp, '登录');
   const data = await resp.json();

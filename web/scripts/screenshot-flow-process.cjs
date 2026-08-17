@@ -10,7 +10,8 @@
  *   - VIEWER_USERNAME/VIEWER_PASSWORD 环境变量强制，缺失即失败（真实 JWT 登录，不伪造角色）
  *
  * 运行方式（服务器需以 DATABASE_URL 环境变量启动在 3320 端口）：
- *   $env:VIEWER_USERNAME="viewer"; $env:VIEWER_PASSWORD="123456"
+ *   $env:ADMIN_USERNAME="管理员用户名"; $env:ADMIN_PASSWORD="管理员密码";
+ *   $env:VIEWER_USERNAME="查看者用户名"; $env:VIEWER_PASSWORD="查看者密码"
  *   node scripts/screenshot-flow-process.cjs
  */
 const { chromium } = require('playwright');
@@ -26,6 +27,14 @@ if (!fs.existsSync(SHOT_DIR)) {
 }
 
 // P2: 环境变量强制
+// ——— 管理员账户（环境变量，不硬编码）——
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  console.error('错误：需要环境变量 ADMIN_USERNAME 和 ADMIN_PASSWORD（不内置默认凭据）');
+  process.exit(1);
+}
+
 const VIEWER_USERNAME = process.env.VIEWER_USERNAME;
 const VIEWER_PASSWORD = process.env.VIEWER_PASSWORD;
 if (!VIEWER_USERNAME || !VIEWER_PASSWORD) {
@@ -113,7 +122,7 @@ function buildDetailXlsx(storeName) {
 
 // ——— 页面工具 ———
 
-async function login(page, username = 'admin', password = '123456') {
+async function login(page, username = ADMIN_USERNAME, password = ADMIN_PASSWORD) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
   const result = await page.evaluate(async (creds) => {
@@ -383,7 +392,7 @@ async function run() {
   try {
     browser = await chromium.launch({ headless: true });
 
-    const { token } = await apiLogin('admin', '123456');
+    const { token } = await apiLogin(ADMIN_USERNAME, ADMIN_PASSWORD);
     adminToken = token;
 
     await recordBaseline(token);

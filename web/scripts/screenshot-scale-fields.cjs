@@ -28,14 +28,26 @@ if (!fs.existsSync(SHOT_DIR)) {
   fs.mkdirSync(SHOT_DIR, { recursive: true });
 }
 
-// 查看者账户
-const VIEWER_USERNAME = process.env.VIEWER_USERNAME || 'viewer';
-const VIEWER_PASSWORD = process.env.VIEWER_PASSWORD || '123456';
+// ——— 管理员账户（环境变量，不硬编码）——
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  console.error('错误：需要环境变量 ADMIN_USERNAME 和 ADMIN_PASSWORD（不内置默认凭据）');
+  process.exit(1);
+}
+
+// 查看者账户（环境变量，缺失即失败，不内置默认凭据）
+const VIEWER_USERNAME = process.env.VIEWER_USERNAME;
+const VIEWER_PASSWORD = process.env.VIEWER_PASSWORD;
+if (!VIEWER_USERNAME || !VIEWER_PASSWORD) {
+  console.error('错误：需要环境变量 VIEWER_USERNAME 和 VIEWER_PASSWORD（不内置默认凭据）');
+  process.exit(1);
+}
 
 // ——— 工具函数 ———
 
 /** 登录并设置 localStorage，返回 user 信息 */
-async function login(page, username = 'admin', password = '123456') {
+async function login(page, username = ADMIN_USERNAME, password = ADMIN_PASSWORD) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
   const result = await page.evaluate(async (creds) => {

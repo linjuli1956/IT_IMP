@@ -13,8 +13,9 @@
  *   BASE_URL        — Nuxt 服务器地址（无默认值，必须显式传入）
  *   CONFIRM_TEST_DB — 必须为 YES 才允许执行写入操作
  *
- * 可选环境变量：
- *   ADMIN_TOKEN  — 管理员 JWT（优先使用；若不提供则用 admin/123456 登录）
+ * 可选环境变量（三选一，均未提供时脚本直接报错退出，不内置任何默认凭据）：
+ *   ADMIN_TOKEN — 管理员 JWT（优先使用）
+ *   或显式提供 ADMIN_USERNAME / ADMIN_PASSWORD 登录获取
  */
 
 const BASE_URL = process.env.BASE_URL || '';
@@ -46,10 +47,15 @@ async function assertOk(resp, label) {
 
 async function getOrLogin() {
   if (ADMIN_TOKEN) return ADMIN_TOKEN;
+  const username = process.env.ADMIN_USERNAME || '';
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!username || !password) {
+    throw new Error('缺少管理员凭据：请设置 ADMIN_TOKEN，或显式设置 ADMIN_USERNAME / ADMIN_PASSWORD');
+  }
   const resp = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: '123456' }),
+    body: JSON.stringify({ username, password }),
   });
   await assertOk(resp, '登录');
   return (await resp.json()).token;
@@ -141,7 +147,29 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n✓ 演示数据清理完成`);
+  // 6. 清理后重新查询并断言 0 残留（只验证演示前缀，不触碰正常业务数据）
+  console.log(`\n  [验证] 重新查询演示数据残留...`);
+  const reTopoResp = await fetch(`${BASE_URL}/api/network-devices/topology`, { headers });
+  await assertOk(reTopoResp, '复查拓扑');
+  const reTopoData = await reTopoResp.json();
+  const reDeviceIds = new Set(reTopoData.devices.filter(d => d.brand?.startsWith(DEMO_PREFIX)).map(d => d.id));
+  const reLinks = reTopoData.links.filter(l =>
+    reDeviceIds.has(l.sourceDeviceId) || reDeviceIds.has(l.targetDeviceId) ||
+    l.remark?.startsWith(DEMO_PREFIX)
+  );
+  const reStoresResp = await fetch(`${BASE_URL}/api/stores`, { headers });
+  await assertOk(reStoresResp, '复查门店');
+  const reStoresData = await reStoresResp.json();
+  const reStores = (Array.isArray(reStoresData) ? reStoresData : (reStoresData.list || reStoresData.data || []))
+    .filter(s => s.name?.startsWith(DEMO_PREFIX));
+
+  if (reDeviceIds.size > 0 || reLinks.length > 0 || reStores.length > 0) {
+    console.error(`\n✗ 清理后仍有残留：门店 ${reStores.length} 个、设备 ${reDeviceIds.size} 台、连线 ${reLinks.length} 条`);
+    process.exit(1);
+  }
+  console.log(`    残留 0 项 ✓`);
+
+  console.log(`\n✓ 演示数据清理完成（含 0 残留断言）`);
 }
 
 main().catch((err) => {

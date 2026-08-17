@@ -35,6 +35,14 @@ if (!fs.existsSync(SHOT_DIR)) {
   fs.mkdirSync(SHOT_DIR, { recursive: true });
 }
 
+// ——— 管理员账户（环境变量，不硬编码）——
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  console.error('错误：需要环境变量 ADMIN_USERNAME 和 ADMIN_PASSWORD（不内置默认凭据）');
+  process.exit(1);
+}
+
 // ——— 查看者账户（环境变量，不硬编码）——
 // 脚本不创建、不删除用户；查看者账户需由验收人员提前在系统中准备。
 const VIEWER_USERNAME = process.env.VIEWER_USERNAME;
@@ -51,7 +59,7 @@ if (!VIEWER_USERNAME || !VIEWER_PASSWORD) {
 // ——— 工具函数 ———
 
 /** 登录并设置 localStorage，返回 user 信息 */
-async function login(page, username = 'admin', password = '123456') {
+async function login(page, username = ADMIN_USERNAME, password = ADMIN_PASSWORD) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
   const result = await page.evaluate(async (creds) => {
