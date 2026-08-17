@@ -230,10 +230,6 @@ const routeTitleMap: Record<string, string> = {
   '/budget': '预算管理',
   '/payment': '支付管理',
   '/it/servers': '服务器管理',
-  '/design/server-workspace': '服务器管理',
-  '/design/ledger-workspace': '台账资产设计稿',
-  '/design/service-workspace': '服务资产设计稿',
-  '/design/network-topology': '网络拓扑图设计稿',
   '/it/network-devices': '网络设备',
   '/it/phones': '固话管理',
   '/it/computers': '电脑管理',
@@ -254,10 +250,6 @@ const routeParentMap: Record<string, string> = {
   '/it/scales': 'IT资产管理',
   '/it/domains': 'IT资产管理',
   '/it/miniapps': 'IT资产管理',
-  '/design/server-workspace': 'IT资产管理',
-  '/design/ledger-workspace': 'IT资产管理',
-  '/design/service-workspace': 'IT资产管理',
-  '/design/network-topology': 'IT资产管理',
 }
 
 /** 详情页等子路由归并到一级菜单标题 */
@@ -272,15 +264,8 @@ const currentTitle = computed(() => {
 /** 面包屑父级标题（如有） */
 const parentTitle = computed(() => routeParentMap[route.path] || '')
 
-/** 侧栏高亮：设计稿页面映射到对应正式菜单项 */
-const activeMenu = computed(() => {
-  const path = route.path
-  if (path.startsWith('/design/server-workspace')) return '/it/servers'
-  if (path.startsWith('/design/ledger-workspace')) return '/it/network-devices'
-  if (path.startsWith('/design/service-workspace')) return '/it/domains'
-  if (path.startsWith('/design/network-topology')) return '/it/network-devices'
-  return path
-})
+/** 侧栏高亮：当前路由对应菜单项 */
+const activeMenu = computed(() => route.path)
 
 /** 默认展开的子菜单 */
 const defaultOpeneds = computed(() => {
