@@ -1,26 +1,26 @@
-# ===========================================
+﻿# ===========================================
 # IT_IMP - .gitignore
-# 公开仓库：排除内部数据、配置、构建产物和私人笔记
+# 鍏紑浠撳簱锛氭帓闄ゅ唴閮ㄦ暟鎹€侀厤缃€佹瀯寤轰骇鐗╁拰绉佷汉绗旇
 # ===========================================
 
-# ---- 依赖目录 ----
+# ---- 渚濊禆鐩綍 ----
 node_modules/
 desktop/frontend/node_modules/
 
-# ---- Nuxt 构建产物 ----
+# ---- Nuxt 鏋勫缓浜х墿 ----
 .nuxt/
 .output/
 dist/
 
-# ---- Wails/Go 构建产物 ----
+# ---- Wails/Go 鏋勫缓浜х墿 ----
 desktop/build/bin/
 desktop/build/windows/
 desktop/build/bin/config.json
 desktop/build/release/
 *.exe
 
-# ---- 运行时数据（部署时生成）----
-# 仅保留 .gitkeep 维持目录结构，其余内容一律忽略
+# ---- 杩愯鏃舵暟鎹紙閮ㄧ讲鏃剁敓鎴愶級----
+# 浠呬繚鐣?.gitkeep 缁存寔鐩綍缁撴瀯锛屽叾浣欏唴瀹逛竴寰嬪拷鐣?
 data/*
 !data/.gitkeep
 !data/uploads
@@ -39,15 +39,15 @@ data/uploads/contracts/*
 data/logs/*
 !data/logs/.gitkeep
 
-# ---- 日志 ----
+# ---- 鏃ュ織 ----
 *.log
 /logs/
 !/logs/.gitkeep
-# web 构建日志/安装日志等临时输出（build-full.txt、build-out.txt、install-sass.txt、server-log.txt 等），
-# 防止 git add . 误纳入公开仓库
+# web 鏋勫缓鏃ュ織/瀹夎鏃ュ織绛変复鏃惰緭鍑猴紙build-full.txt銆乥uild-out.txt銆乮nstall-sass.txt銆乻erver-log.txt 绛夛級锛?
+# 闃叉 git add . 璇撼鍏ュ叕寮€浠撳簱
 web/*.txt
 
-# ---- 环境变量与密钥 ----
+# ---- 鐜鍙橀噺涓庡瘑閽?----
 .env
 .env.*
 !.env.example
@@ -57,7 +57,7 @@ config.json
 *.p12
 *.cert
 
-# ---- 系统文件 ----
+# ---- 绯荤粺鏂囦欢 ----
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -68,48 +68,57 @@ desktop.ini
 *.swp
 *.swo
 
-# ---- 临时文件 ----
+# ---- 涓存椂鏂囦欢 ----
 *.tmp
 *.bak
 *~
 
-# ---- 内部文档（含真实业务数据，不入公开仓库）----
-docs/副本*.xlsx
+# ---- 鍐呴儴鏂囨。锛堝惈鐪熷疄涓氬姟鏁版嵁锛屼笉鍏ュ叕寮€浠撳簱锛?---
+docs/鍓湰*.xlsx
 docs/*.pdf
-docs/前端规划文档.md
-docs/开发习惯与项目模板.md
-docs/开发计划文档.md
-docs/开源准备清单.md
-docs/数据库字典.md
-docs/计提费用分摊规则引擎_开发要求.md
-docs/项目目录文档与业务逻辑说明.md
-docs/项目立项文档.md
+docs/鍓嶇瑙勫垝鏂囨。.md
+docs/寮€鍙戜範鎯笌椤圭洰妯℃澘.md
+docs/寮€鍙戣鍒掓枃妗?md
+docs/寮€婧愬噯澶囨竻鍗?md
+docs/鏁版嵁搴撳瓧鍏?md
+docs/璁℃彁璐圭敤鍒嗘憡瑙勫垯寮曟搸_寮€鍙戣姹?md
+docs/椤圭洰鐩綍鏂囨。涓庝笟鍔￠€昏緫璇存槑.md
+docs/椤圭洰绔嬮」鏂囨。.md
 
-# ---- 数据库 Seed（公开仓库不预置业务数据）----
+# ---- 鏁版嵁搴?Seed锛堝叕寮€浠撳簱涓嶉缃笟鍔℃暟鎹級----
 web/prisma/seed.ts
 web/prisma/seed.demo.ts
 
-# ---- 上传文件 / OCR 临时文件 / 导出文件 ----
+# ---- 涓婁紶鏂囦欢 / OCR 涓存椂鏂囦欢 / 瀵煎嚭鏂囦欢 ----
 web/public/mock-invoices/
 web/data/uploads/
 web/data/exports/
 web/data/ocr-temp/
 
-# ---- 数据库备份 ----
+# ---- 鏁版嵁搴撳浠?----
 *.sql.bak
 *.sql.gz
 *.dump
 
-# ---- Bun 运行时（随包发布，不入仓库）----
+# ---- Bun 杩愯鏃讹紙闅忓寘鍙戝竷锛屼笉鍏ヤ粨搴擄級----
 desktop/build/bin/bun/
 
-# ---- Docker 运行时数据与环境文件 ----
+# ---- Docker 杩愯鏃舵暟鎹笌鐜鏂囦欢 ----
 deploy/docker/data/
 
-# ---- 截图（本地验收产物，不入仓库）----
+# ---- 鎴浘锛堟湰鍦伴獙鏀朵骇鐗╋紝涓嶅叆浠撳簱锛?---
 screenshots/network-topology-tab/
 
-# ---- AI 工具缓存 ----
+# ---- AI 宸ュ叿缂撳瓨 ----
 .qoder/
 .codex/
 .reasonix/
+# P1-2 release 候选新增内部设计/审计文档（仅本地开发，不公开）
+docs/需求开发文档_20260807.md
+docs/网络拓扑图设计方案.md
+docs/IT资产页面分型与交互规范.md
+docs/前端设计系统与资产交互规范_20260808.md
+docs/前端视觉一致性审计_20260810.md
+docs/前端视觉基线重整审计_20260811.md
+docs/唯一视觉契约_v0.2_20260812.md
+docs/发布前整合审计_20260816.md
