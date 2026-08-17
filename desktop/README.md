@@ -25,4 +25,4 @@ cd desktop
 wails build
 ```
 
-正式发布时，不能只复制 EXE，还需要使用发布脚本准备同目录的 `web/` 和 `bun/` 目录。详见项目根目录 README。
+正式发布包由 `desktop/build-release.ps1` 生成：脚本会构建 Web、生成 Prisma Client、编译 EXE，并把 `web/`、`bun/` 等运行时依赖组装到 `desktop/build/release/` 下的完整发布目录。详见项目根目录 README。
