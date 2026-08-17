@@ -16,7 +16,7 @@ const dbConfig = ref({ host: '', port: 3306, username: 'root', password: '', dbn
 const passwordConfigured = ref(false)
 const defaultAppName = '综合管理平台'
 const appName = ref(defaultAppName)
-const configToolVersion = shallowRef('20260816')
+const configToolVersion = shallowRef('20260817')
 const configToolTitle = computed(() => `${appName.value.trim() || defaultAppName}-配置工具 ${configToolVersion.value}`)
 const jwtSecret = ref('')
 const initialAdmin = ref({ username: 'admin', password: '' })

@@ -9,7 +9,7 @@ import (
 )
 
 // BuildVersion 在发布构建时由 build-release.ps1 从根目录 VERSION 注入。
-var BuildVersion = "20260816"
+var BuildVersion = "20260817"
 
 //go:embed all:frontend/dist
 var assets embed.FS
