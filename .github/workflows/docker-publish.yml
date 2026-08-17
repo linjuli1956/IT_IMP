@@ -18,7 +18,7 @@ jobs:
       - name: 设置 Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -44,9 +44,16 @@ jobs:
           cd ..
           echo "发布门禁全部通过"
 
-      - name: 生成中国时区日期标签
-        id: date
-        run: echo "tag=$(TZ=Asia/Shanghai date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: 读取根目录 VERSION 作为镜像标签（校验 YYYYMMDD 格式）
+        id: version
+        run: |
+          set -euo pipefail
+          tag=$(tr -d '[:space:]' < VERSION)
+          if ! echo "$tag" | grep -Eq '^(19|20)[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])$'; then
+            echo "VERSION 格式非法：$tag（应为 YYYYMMDD）" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: 登录 Docker Hub
         uses: docker/login-action@v3
@@ -63,4 +70,4 @@ jobs:
           push: true
           tags: |
             linjuli2026/it-imp-web:latest
-            linjuli2026/it-imp-web:${{ steps.date.outputs.tag }}
+            linjuli2026/it-imp-web:${{ steps.version.outputs.tag }}

@@ -19,6 +19,17 @@ import { writeFile, mkdir } from 'fs/promises'
 import { resolve, basename } from 'path'
 import * as XLSX from 'xlsx'
 
+/** 文件大小上限：5MB */
+const MAX_FILE_SIZE = 5 * 1024 * 1024
+/** 允许的扩展名（大小写不敏感） */
+const ALLOWED_EXTS = ['xlsx', 'xls']
+
+/** 校验文件名扩展名是否在允许列表内 */
+function hasAllowedExt(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  return ALLOWED_EXTS.includes(ext)
+}
+
 /** 将 Date 格式化为 YYYY-MM-DD HH:mm */
 function formatDate(date: Date): string {
   const y = date.getFullYear()
@@ -154,8 +165,16 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const carrier = carrierPart.data.toString('utf-8')
   const feeMonth = feeMonthPart.data.toString('utf-8')
-  const fileName = filePart.filename || '未命名.xls'
+  const fileName = filePart.filename || '未命名.xlsx'
   const fileBuffer = filePart.data
+
+  // 安全校验：仅接受 .xlsx / .xls，且不超过 5MB（与预算导入一致）
+  if (!hasAllowedExt(fileName)) {
+    throw createError({ statusCode: 400, message: '仅支持 .xlsx / .xls 文件' })
+  }
+  if (fileBuffer.length > MAX_FILE_SIZE) {
+    throw createError({ statusCode: 400, message: '文件大小不能超过 5MB' })
+  }
 
   // 安全校验：运营商白名单（防止路径穿越）
   const validCarriers = ['中国电信', '中国联通', '中国移动', '广西广电']

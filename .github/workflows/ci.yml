@@ -25,6 +25,8 @@ jobs:
         env:
           # Prisma Client 生成只需合法连接串，不会连接真实数据库。
           DATABASE_URL: mysql://root:ci-placeholder@localhost:3306/it_imp
+      - run: npm run typecheck
+        working-directory: web
       - run: npm run build
         working-directory: web
       - run: npm test
@@ -40,6 +42,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - run: go test ./...
+        working-directory: desktop
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
       - run: wails build
         working-directory: desktop

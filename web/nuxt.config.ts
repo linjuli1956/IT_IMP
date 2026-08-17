@@ -1,7 +1,8 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  // DevTools 仅开发环境启用，生产构建不携带
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
   telemetry: false,
 
   runtimeConfig: {
