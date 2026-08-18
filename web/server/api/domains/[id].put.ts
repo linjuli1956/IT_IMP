@@ -8,19 +8,27 @@
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
-import { toDomainDto, omitEmptySensitiveFields } from '../../utils/sensitive-dto'
+import { toDomainDto } from '../../utils/sensitive-dto'
+import { parsePositiveSafeId, ensurePlainObjectBody, pickStringUpdateFields } from '../../utils/request-validation'
 import { readBody, getRouterParam, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
-  const id = Number(getRouterParam(event, 'id'))
+  const id = parsePositiveSafeId(getRouterParam(event, 'id'))
 
-  if (!id) {
-    throw createError({ statusCode: 400, message: '无效的ID' })
-  }
-
-  const body = await readBody(event)
-  const data = omitEmptySensitiveFields(body, ['mainPassword'])
+  const body = ensurePlainObjectBody(await readBody(event))
+  // 白名单挑选：未知字段/id 不落库；mainPassword 空值 = 不修改
+  const data = pickStringUpdateFields(body, [
+    { key: 'domain', label: '域名' },
+    { key: 'mainAccount', label: '主账号' },
+    { key: 'mainPassword', label: '主账号密码', sensitive: true },
+    { key: 'certType', label: '证书类型' },
+    { key: 'certIssuer', label: '证书颁发机构' },
+    { key: 'certRenewDate', label: '证书生效日期' },
+    { key: 'certExpireDate', label: '证书到期日期' },
+    { key: 'remark', label: '备注' },
+    { key: 'status', label: '状态' },
+  ])
 
   const record = await prisma.domain.update({
     where: { id },

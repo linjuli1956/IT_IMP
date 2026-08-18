@@ -9,30 +9,23 @@
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
 import { toMiniappDto } from '../../utils/sensitive-dto'
+import { ensurePlainObjectBody, requireStringField, optionalStringField } from '../../utils/request-validation'
 import { readBody, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
-  const body = await readBody(event)
-  const { name, email, emailPassword } = body
-
-  if (!name) {
-    throw createError({ statusCode: 400, message: '小程序名称不能为空' })
-  }
-  if (!email) {
-    throw createError({ statusCode: 400, message: '关联邮箱不能为空' })
-  }
-  if (!emailPassword) {
-    throw createError({ statusCode: 400, message: '邮箱密码不能为空' })
-  }
+  const body = ensurePlainObjectBody(await readBody(event))
+  const name = requireStringField(body, 'name', '小程序名称')
+  const email = requireStringField(body, 'email', '关联邮箱')
+  const emailPassword = requireStringField(body, 'emailPassword', '邮箱密码')
 
   const miniapp = await prisma.miniapp.create({
     data: {
       name,
       email,
       emailPassword,
-      remark: body.remark || '',
-      status: body.status || '正常',
+      remark: optionalStringField(body, 'remark', '备注') || '',
+      status: optionalStringField(body, 'status', '状态') || '正常',
     },
   })
 

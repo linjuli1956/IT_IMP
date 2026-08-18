@@ -7,19 +7,33 @@
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
-import { toPaymentDto, omitEmptySensitiveFields } from '../../utils/sensitive-dto'
+import { toPaymentDto } from '../../utils/sensitive-dto'
+import { parsePositiveSafeId, ensurePlainObjectBody, pickStringUpdateFields } from '../../utils/request-validation'
 import { readBody, getRouterParam, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
-  const id = Number(getRouterParam(event, 'id'))
+  const id = parsePositiveSafeId(getRouterParam(event, 'id'))
 
-  if (!id) {
-    throw createError({ statusCode: 400, message: '无效的ID' })
+  const body = ensurePlainObjectBody(await readBody(event))
+  // 白名单挑选：未知字段/id 不落库；configValue 空值 = 不修改
+  const data = pickStringUpdateFields(body, [
+    { key: 'storeId', label: '机构代码' },
+    { key: 'storeName', label: '门店名称' },
+    { key: 'payMethod', label: '支付方式' },
+    { key: 'payMethodName', label: '支付方式名称' },
+    { key: 'provider', label: '服务商' },
+    { key: 'configName', label: '配置项名称' },
+    { key: 'configValue', label: '配置值', sensitive: true },
+    { key: 'posNo', label: 'POS号' },
+    { key: 'status', label: '状态' },
+  ])
+  if (body.isSensitive !== undefined) {
+    if (typeof body.isSensitive !== 'boolean') {
+      throw createError({ statusCode: 400, message: '是否敏感必须是布尔值' })
+    }
+    data.isSensitive = body.isSensitive
   }
-
-  const body = await readBody(event)
-  const data = omitEmptySensitiveFields(body, ['configValue'])
 
   const config = await prisma.paymentConfig.update({
     where: { id },

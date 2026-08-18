@@ -8,19 +8,23 @@
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
-import { toMiniappDto, omitEmptySensitiveFields } from '../../utils/sensitive-dto'
+import { toMiniappDto } from '../../utils/sensitive-dto'
+import { parsePositiveSafeId, ensurePlainObjectBody, pickStringUpdateFields } from '../../utils/request-validation'
 import { readBody, getRouterParam, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
-  const id = Number(getRouterParam(event, 'id'))
+  const id = parsePositiveSafeId(getRouterParam(event, 'id'))
 
-  if (!id) {
-    throw createError({ statusCode: 400, message: '无效的ID' })
-  }
-
-  const body = await readBody(event)
-  const data = omitEmptySensitiveFields(body, ['emailPassword'])
+  const body = ensurePlainObjectBody(await readBody(event))
+  // 白名单挑选：未知字段/id 不落库；emailPassword 空值 = 不修改
+  const data = pickStringUpdateFields(body, [
+    { key: 'name', label: '小程序名称' },
+    { key: 'email', label: '关联邮箱' },
+    { key: 'emailPassword', label: '邮箱密码', sensitive: true },
+    { key: 'remark', label: '备注' },
+    { key: 'status', label: '状态' },
+  ])
 
   const miniapp = await prisma.miniapp.update({
     where: { id },

@@ -9,34 +9,27 @@
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
 import { toDomainDto } from '../../utils/sensitive-dto'
+import { ensurePlainObjectBody, requireStringField, optionalStringField } from '../../utils/request-validation'
 import { readBody, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
-  const body = await readBody(event)
-  const { domain, mainAccount, mainPassword } = body
-
-  if (!domain) {
-    throw createError({ statusCode: 400, message: '域名不能为空' })
-  }
-  if (!mainAccount) {
-    throw createError({ statusCode: 400, message: '主账号不能为空' })
-  }
-  if (!mainPassword) {
-    throw createError({ statusCode: 400, message: '主账号密码不能为空' })
-  }
+  const body = ensurePlainObjectBody(await readBody(event))
+  const domain = requireStringField(body, 'domain', '域名')
+  const mainAccount = requireStringField(body, 'mainAccount', '主账号')
+  const mainPassword = requireStringField(body, 'mainPassword', '主账号密码')
 
   const record = await prisma.domain.create({
     data: {
       domain,
       mainAccount,
       mainPassword,
-      certType: body.certType || '',
-      certIssuer: body.certIssuer || '',
-      certRenewDate: body.certRenewDate || '',
-      certExpireDate: body.certExpireDate || '',
-      remark: body.remark || '',
-      status: body.status || '正常',
+      certType: optionalStringField(body, 'certType', '证书类型') || '',
+      certIssuer: optionalStringField(body, 'certIssuer', '证书颁发机构') || '',
+      certRenewDate: optionalStringField(body, 'certRenewDate', '证书生效日期') || '',
+      certExpireDate: optionalStringField(body, 'certExpireDate', '证书到期日期') || '',
+      remark: optionalStringField(body, 'remark', '备注') || '',
+      status: optionalStringField(body, 'status', '状态') || '正常',
     },
   })
 

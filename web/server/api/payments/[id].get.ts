@@ -7,15 +7,12 @@
 import { prisma } from '../../utils/prisma'
 import { requireRole } from '../../utils/auth'
 import { toPaymentDto } from '../../utils/sensitive-dto'
+import { parsePositiveSafeId } from '../../utils/request-validation'
 import { getRouterParam, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   requireRole(event)
-  const id = Number(getRouterParam(event, 'id'))
-
-  if (!id) {
-    throw createError({ statusCode: 400, message: '无效的ID' })
-  }
+  const id = parsePositiveSafeId(getRouterParam(event, 'id'))
 
   const config = await prisma.paymentConfig.findUnique({ where: { id } })
 

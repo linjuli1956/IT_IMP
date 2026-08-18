@@ -76,22 +76,3 @@ export function toPaymentDto<T extends PaymentConfigRecord>(config: T): Omit<T, 
   }
   return { ...config } as Omit<T, 'configValue'> & { sensitiveConfigured?: boolean }
 }
-
-/**
- * 更新载荷的敏感字段空值保护：
- * 敏感字段为空字符串/未提供时不更新（防止编辑弹窗留空意外清空已保存凭据）。
- * 三个模块共用：域名 mainPassword / 小程序 emailPassword / 支付 configValue。
- */
-export function omitEmptySensitiveFields(
-  data: Record<string, unknown>,
-  fields: readonly string[],
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...data }
-  for (const field of fields) {
-    const value = result[field]
-    if (value === undefined || value === null || value === '') {
-      delete result[field]
-    }
-  }
-  return result
-}

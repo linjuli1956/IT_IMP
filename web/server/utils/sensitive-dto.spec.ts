@@ -1,13 +1,12 @@
 /**
  * 敏感字段脱敏 DTO 单元测试
- * 覆盖：列表/详情/CUD 响应剥离明文 + "是否已配置"标记 + PUT 空值保护
+ * 覆盖：列表/详情/CUD 响应剥离明文 + "是否已配置"标记
  */
 import { describe, it, expect } from 'vitest'
 import {
   toDomainDto,
   toMiniappDto,
   toPaymentDto,
-  omitEmptySensitiveFields,
 } from './sensitive-dto'
 
 describe('toDomainDto', () => {
@@ -62,24 +61,5 @@ describe('toPaymentDto', () => {
     })
     expect(dto.configValue).toBe('MCH-001')
     expect(dto).not.toHaveProperty('sensitiveConfigured')
-  })
-})
-
-describe('omitEmptySensitiveFields（PUT 空值保护）', () => {
-  it('空字符串/null/undefined 的敏感字段被剔除，非空保留，其它字段不动', () => {
-    const data = omitEmptySensitiveFields(
-      { mainPassword: '', emailPassword: null, configValue: undefined, remark: '备注', status: '正常' },
-      ['mainPassword', 'emailPassword', 'configValue'],
-    )
-    expect(data).not.toHaveProperty('mainPassword')
-    expect(data).not.toHaveProperty('emailPassword')
-    expect(data).not.toHaveProperty('configValue')
-    expect(data.remark).toBe('备注')
-    expect(data.status).toBe('正常')
-  })
-
-  it('非空敏感字段保留（显式修改密码场景）', () => {
-    const data = omitEmptySensitiveFields({ mainPassword: 'new-pw', remark: '' }, ['mainPassword'])
-    expect(data.mainPassword).toBe('new-pw')
   })
 })
