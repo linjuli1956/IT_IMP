@@ -26,18 +26,34 @@ export async function fetchFileBlob(filePath: string): Promise<Blob> {
   return res.blob()
 }
 
-/** 新窗口预览文件（PDF 等）：Blob → ObjectURL，延迟回收 */
+/** 新窗口预览文件（PDF 等）：用户手势阶段预开空白窗口 → 鉴权取 Blob → 导航至 ObjectURL
+ *
+ * 顺序要求：window.open 必须在 await fetch 之前的同步阶段执行，
+ * 否则浏览器会丢失用户手势把新窗口当弹窗拦截。
+ * 不使用 'noopener' 特性参数：部分浏览器会令返回句柄为 null，
+ * 无法导航预开窗口（会被误判为预览失败）；断开 opener 改用
+ * 直接置空预开窗口的 opener（与预开窗口兼容的方式）。
+ */
 export async function openFilePreview(filePath: string): Promise<void> {
-  const blob = await fetchFileBlob(filePath)
-  const url = URL.createObjectURL(blob)
-  const win = window.open(url, '_blank', 'noopener')
-  if (!win) {
+  const previewWin = window.open('about:blank', '_blank')
+  if (!previewWin) {
     ElMessage.warning('弹出窗口被浏览器拦截，请允许弹窗后重试')
-    URL.revokeObjectURL(url)
     return
   }
-  // 给新窗口加载留出时间，之后回收 ObjectURL
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  // 预开窗口（about:blank）与当前页同源，可直接断开 opener 引用
+  previewWin.opener = null
+
+  try {
+    const blob = await fetchFileBlob(filePath)
+    const url = URL.createObjectURL(blob)
+    previewWin.location.href = url
+    // 给新窗口加载留出时间，之后回收 ObjectURL
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error) {
+    // 请求失败：关闭预开窗口并抛出原始错误，交由调用方提示
+    previewWin.close()
+    throw error
+  }
 }
 
 /** 下载文件：Blob → ObjectURL → a[download] 点击 */
