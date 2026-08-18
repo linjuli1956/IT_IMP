@@ -42,7 +42,7 @@ export default defineNuxtConfig({
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: '综合管理平台 20260817' },
+        { name: 'description', content: '综合管理平台 20260818' },
       ],
     },
   },

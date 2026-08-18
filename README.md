@@ -2,7 +2,7 @@
 
 一个可自托管的综合管理平台。项目维护一套 `web/` 业务源码，并提供 Windows EXE 与 Docker Compose 两种部署方式。
 
-当前发布日期版本：`20260817`。
+当前发布日期版本：`20260818`。
 
 ## Docker Compose（推荐）
 
@@ -34,7 +34,7 @@ docker compose up -d
 .\desktop\build-release.ps1
 ```
 
-发布包位于 `desktop/build/release/IT_IMP-20260817/`，配置工具默认显示“综合管理平台-配置工具 20260817”。
+发布包位于 `desktop/build/release/IT_IMP-20260818/`，配置工具默认显示“综合管理平台-配置工具 20260818”。
 
 > 发布脚本会自动寻找本机 Bun（`BUN_EXE` 环境变量 → `~/.bun/bin/bun.exe` → PATH）并复制进发布包的 `bun/` 目录；若本机未安装 Bun，请先安装：`powershell -c "irm bun.sh/install.ps1 | iex"`。
 
@@ -62,14 +62,13 @@ npm.cmd --prefix web run build
 
 修改 `desktop/` 时另需执行 `go test ./...` 与桌面前端构建，完整清单见 [贡献指南](CONTRIBUTING.md)。
 
-## 本版本变更（20260817）
+## 本版本变更（20260818）
 
-- 敏感字段边界：域名主密码、小程序邮箱密码、敏感支付配置值不再随列表/详情接口明文返回，改为登录后显式“查看已保存凭据”动作接口；查看者无权访问；
-- 文件访问登录保护：合同附件、发票 PDF、明细文件等 `/files/**` 资源需登录后访问；
-- 明细上传限制为 `.xls/.xlsx` 且不超过 5MB；
-- CI 门禁：Node 24 统一、新增 typecheck 与桌面端 `go test`、Docker 镜像 tag 从根目录 `VERSION` 读取并校验格式；
-- 移除已废弃的 `design/*` 原型路由与 Mock 组件（旧地址返回 404）；
-- 依赖安全升级与精简，生产构建关闭 DevTools。
+- 登录文件预览：合同/发票 PDF 预览改为在用户点击阶段预开空白窗口，避免浏览器丢失用户手势误拦截弹窗；token 仅走 Authorization 头，不进 URL；
+- 域名/小程序/支付配置接口输入收紧：请求体类型与字段白名单校验、更新仅传白名单字段、非法 ID 与非法类型统一返回 400 而非 500；
+- 桌面构建 `frontend:install` 改为 `npm ci`，锁定桌面前端依赖；
+- 公开文档与示例中的版本引用统一（SECURITY.md、Compose 示例、发布脚本示例）；
+- 仓库清理：移除已删除 design 原型页对应截图与失效截图脚本，冻结阶段 D 验收截图迁入 `screenshots/stage-d/`。
 
 贡献方式见 [贡献指南](CONTRIBUTING.md)。请勿提交密码、JWT、数据库备份、上传文件、真实业务数据、`node_modules` 或构建产物。
 
