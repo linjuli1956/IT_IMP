@@ -27,6 +27,11 @@ const fakeWin = {
 }
 const createdUrls: string[] = []
 const revokedUrls: string[] = []
+/** 模块级引用，供断言读取 mock 调用记录（window.open 属性类型不含 .mock） */
+const openMock = vi.fn(() => {
+  callOrder.push('open')
+  return fakeWin as unknown as Window
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -35,10 +40,7 @@ beforeEach(() => {
   revokedUrls.length = 0
   localStorage.setItem('token', 'test-token')
 
-  window.open = vi.fn(() => {
-    callOrder.push('open')
-    return fakeWin as unknown as Window
-  })
+  window.open = openMock as unknown as typeof window.open
   vi.stubGlobal('fetch', vi.fn(async () => {
     callOrder.push('fetch')
     return { ok: true, status: 200, blob: async () => new Blob(['%PDF-fake']) } as unknown as Response
@@ -81,7 +83,7 @@ describe('openFilePreview（预开窗口模式）', () => {
     expect(input).toBe('/files/contracts/a.pdf')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
     // 预开窗口与导航地址均不含 token
-    expect(window.open.mock.calls[0].join(' ')).not.toContain('test-token')
+    expect((openMock.mock.calls[0] ?? []).join(' ')).not.toContain('test-token')
     expect(fakeWin.location.href).not.toContain('test-token')
   })
 
@@ -107,7 +109,7 @@ describe('openFilePreview（预开窗口模式）', () => {
   })
 
   it('弹窗被拦截（window.open 返回 null）：提示且不发起 fetch', async () => {
-    window.open = vi.fn(() => null)
+    window.open = vi.fn(() => null) as unknown as typeof window.open
     await openFilePreview('/files/contracts/a.pdf')
     expect(ElMessage.warning).toHaveBeenCalledTimes(1)
     expect(fetch).not.toHaveBeenCalled()

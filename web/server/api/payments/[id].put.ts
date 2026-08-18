@@ -9,6 +9,7 @@ import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
 import { toPaymentDto } from '../../utils/sensitive-dto'
 import { parsePositiveSafeId, ensurePlainObjectBody, pickStringUpdateFields } from '../../utils/request-validation'
+import type { Prisma } from '../../../generated/prisma/client'
 import { readBody, getRouterParam, type H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -17,7 +18,7 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const body = ensurePlainObjectBody(await readBody(event))
   // 白名单挑选：未知字段/id 不落库；configValue 空值 = 不修改
-  const data = pickStringUpdateFields(body, [
+  const data: Record<string, string | boolean> = pickStringUpdateFields(body, [
     { key: 'storeId', label: '机构代码' },
     { key: 'storeName', label: '门店名称' },
     { key: 'payMethod', label: '支付方式' },
@@ -37,7 +38,7 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const config = await prisma.paymentConfig.update({
     where: { id },
-    data,
+    data: data as Prisma.PaymentConfigUncheckedUpdateInput,
   })
 
   await prisma.operationLog.create({
