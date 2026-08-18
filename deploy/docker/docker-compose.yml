@@ -1,41 +1,41 @@
-# IT_IMP Docker Compose锛圖ocker Hub 闀滃儚閮ㄧ讲锛?
+# IT_IMP Docker Compose（Docker Hub 镜像部署）
 #
-# 浣跨敤鏂规硶锛氬彧闇€淇敼鏈枃浠堕《閮ㄧ殑鈥滈儴缃查厤缃€濓紝鐒跺悗鎵ц锛歞ocker compose up -d
-# 涓嶉渶瑕?.env銆佷笉闇€瑕佷笅杞芥簮鐮併€佷笉闇€瑕佸湪 NAS 鏋勫缓闀滃儚銆?
-# 鏈枃浠跺彲鐩存帴浣滀负 GitHub 閮ㄧ讲绀轰緥锛氭瘡椤归厤缃兘闄勬湁鐢ㄩ€斻€佺ず渚嬫垨淇敼鎻愮ず銆?
+# 使用方法：只需修改本文件顶部的“部署配置”，然后执行：docker compose up -d
+# 不需要 .env、不需要下载源码、不需要在 NAS 构建镜像。
+# 本文件可直接作为 GitHub 部署示例：每项配置都附有用途、示例或修改提示。
 #
-# 鏈嶅姟璇存槑锛?
-#   - config-check锛氫竴娆℃€ф鏌ュ繀濉瘑閽ワ紝鎴愬姛鍚庢樉绀?Exited 0 灞炴甯哥幇璞°€?
-#   - db锛歁ySQL 鏁版嵁搴擄紝瀹瑰櫒鍐呴儴绔彛鍥哄畾涓?3306銆?
-#   - web锛氱鐞嗗钩鍙帮紝瀹瑰櫒鍐呴儴绔彛鍥哄畾涓?3000銆?
+# 服务说明：
+#   - config-check：一次性检查必填密钥，成功后显示 Exited 0 属正常现象。
+#   - db：MySQL 数据库，容器内部端口固定为 3306。
+#   - web：管理平台，容器内部端口固定为 3000。
 #
-# 鍥哄畾鏃ユ湡鐗堟湰锛氬皢 web.image 鐨?latest 鏀逛负渚嬪 20260810銆?
+# 固定日期版本：将 web.image 的 latest 改为例如 20260818。
 
 x-it-imp-settings:
-  # ======== 蹇呴』淇敼锛氭崲鎴愪綘鑷繁鐨勫己瀵嗙爜锛屼笉鑳界洿鎺ヤ娇鐢ㄤ腑鏂囧崰浣嶅€兼垨绀轰緥鍊?========
-  # 瀵嗙爜鍖呭惈 $ 鏃讹紝Compose 涓』鍐欐垚 $$锛涗緥濡?A$B 搴斿啓涓?A$$B銆?
-  mysql-root-password: &mysql-root-password "浣犵殑MySQL寮哄瘑鐮? # 渚嬪: MySql@2026#Secure锛汳ySQL root 鐧诲綍瀵嗙爜
-  jwt-secret: &jwt-secret "浣犵殑JWT寮哄瘑閽? # 渚嬪: JwtSecret@2026#IT_IMP锛涚敤浜庣櫥褰曚护鐗岀鍚?
-  initial-admin-username: &initial-admin-username "admin" # 棣栨绠＄悊鍛樿处鍙凤紝鍙寜闇€淇敼
-  initial-admin-password: &initial-admin-password "浣犵殑绠＄悊鍛樺瘑鐮? # 渚嬪: Admin@2026#Secure锛涢娆＄櫥褰曞悗璇风珛鍗充慨鏀?
+  # ======== 必须修改：换成你自己的强密码，不能直接使用中文占位值或示例值 ========
+  # 密码包含 $ 时，Compose 中须写成 $$；例如 A$B 应写为 A$$B。
+  mysql-root-password: &mysql-root-password "你的MySQL强密码" # 例如: MySql@2026#Secure；MySQL root 登录密码
+  jwt-secret: &jwt-secret "你的JWT强密钥" # 例如: JwtSecret@2026#IT_IMP；用于登录令牌签名
+  initial-admin-username: &initial-admin-username "admin" # 首次管理员账号，可按需修改
+  initial-admin-password: &initial-admin-password "你的管理员密码" # 例如: Admin@2026#Secure；首次登录后请立即修改
 
-  # ======== 骞冲彴鏄剧ず涓庢椂鍖?========
-  app-name: &app-name "缁煎悎绠＄悊骞冲彴" # 娴忚鍣ㄩ〉闈㈡樉绀虹殑绯荤粺鍚嶇О锛屼緥濡傦細娉板叴瓒呭競淇℃伅閮ㄧ患鍚堢鐞嗗钩鍙?
-  timezone: &timezone "Asia/Shanghai" # 鏃跺尯锛屼緥濡傦細Asia/Shanghai
-  mysql-command: &mysql-command "--default-time-zone=+08:00" # MySQL 浣跨敤涓滃叓鍖?
+  # ======== 平台显示与时区 ========
+  app-name: &app-name "综合管理平台" # 浏览器页面显示的系统名称，例如：泰兴超市信息部综合管理平台
+  timezone: &timezone "Asia/Shanghai" # 时区，例如：Asia/Shanghai
+  mysql-command: &mysql-command "--default-time-zone=+08:00" # MySQL 使用东八区
 
-  # ======== NAS 瀵瑰绔彛锛氬乏杈规槸 NAS/灞€鍩熺綉绔彛锛屼笉鏄鍣ㄥ唴閮ㄧ鍙?========
-  web-port: &web-port "31956"     # 娴忚鍣ㄨ闂細http://NAS_IP:31956锛涘彲鏀逛负鏈崰鐢ㄧ鍙?
-  mysql-port: &mysql-port "3307"  # DBX 绛夊閮ㄥ伐鍏疯繛鎺ワ細NAS_IP:3307锛涘彲鏀逛负鏈崰鐢ㄧ鍙?
+  # ======== NAS 对外端口：左边是 NAS/局域网端口，不是容器内部端口 ========
+  web-port: &web-port "31956"     # 浏览器访问：http://NAS_IP:31956；可改为未占用端口
+  mysql-port: &mysql-port "3307"  # DBX 等外部工具连接：NAS_IP:3307；可改为未占用端口
 
-  # ======== 鏁版嵁鎸佷箙鍖栫洰褰曪細璇锋寜 NAS 瀹為檯鐩綍淇敼 ========
-  # 鐩稿璺緞鍙啓 ./data/mysql 涓?./data/app锛汵AS 鎺ㄨ崘浣跨敤缁濆璺緞銆?
-  # MySQL 鏁版嵁搴撴枃浠朵綅浜?mysql 鐩綍锛涚敤鎴蜂笂浼犵殑 PDF 绛夊簲鐢ㄦ枃浠朵綅浜?app 鐩綍銆?
-  mysql-data-dir: &mysql-data-dir "./data/mysql" # 绀轰緥锛?vol1/1000/docker/IT_IMP_docker/data/mysql
-  app-data-dir: &app-data-dir "./data/app" # 绀轰緥锛?vol1/1000/docker/IT_IMP_docker/data/app
+  # ======== 数据持久化目录：请按 NAS 实际目录修改 ========
+  # 相对路径可写 ./data/mysql 与 ./data/app；NAS 推荐使用绝对路径。
+  # MySQL 数据库文件位于 mysql 目录；用户上传的 PDF 等应用文件位于 app 目录。
+  mysql-data-dir: &mysql-data-dir "./data/mysql" # 示例：/vol1/1000/docker/IT_IMP_docker/data/mysql
+  app-data-dir: &app-data-dir "./data/app" # 示例：/vol1/1000/docker/IT_IMP_docker/data/app
 
 services:
-  # 鍚姩鍓嶉樆姝㈠叕寮€鍗犱綅瀵嗛挜璇敤浜庣湡瀹炴暟鎹簱锛涙垚鍔熼€€鍑猴紙Exited 0锛夎〃绀烘鏌ラ€氳繃銆?
+  # 启动前阻止公开占位密钥误用于真实数据库；成功退出（Exited 0）表示检查通过。
   config-check:
     image: busybox:1.36
     restart: "no"
@@ -50,13 +50,13 @@ services:
         for name in MYSQL_ROOT_PASSWORD JWT_SECRET INITIAL_ADMIN_PASSWORD; do
           value="$$(printenv "$$name")"
           case "$$value" in
-            ""|CHANGE_ME_*|"浣犵殑MySQL寮哄瘑鐮?|"浣犵殑JWT寮哄瘑閽?|"浣犵殑绠＄悊鍛樺瘑鐮?)
-              echo "閰嶇疆閿欒锛氳鍦?docker-compose.yml 椤堕儴璁剧疆 $$name"
+            ""|CHANGE_ME_*|"你的MySQL强密码"|"你的JWT强密钥"|"你的管理员密码")
+              echo "配置错误：请在 docker-compose.yml 顶部设置 $$name"
               exit 1
               ;;
           esac
         done
-        echo "閮ㄧ讲閰嶇疆妫€鏌ラ€氳繃銆?
+        echo "部署配置检查通过。"
 
   db:
     image: mysql:8.0
@@ -66,13 +66,13 @@ services:
         condition: service_completed_successfully
     environment:
       MYSQL_ROOT_PASSWORD: *mysql-root-password
-      # 浠呭湪绌烘暟鎹洰褰曢娆″垵濮嬪寲鏃跺垱寤鸿繙绋?root 鏉冮檺锛涘凡鏈夋暟鎹簱涓嶄細鑷姩鏀瑰彉銆?
+      # 仅在空数据目录首次初始化时创建远程 root 权限；已有数据库不会自动改变。
       MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: it_imp
       TZ: *timezone
     command: *mysql-command
     ports:
-      # 澶栭儴 NAS_IP:3307 -> 瀹瑰櫒鍐呴儴 MySQL:3306
+      # 外部 NAS_IP:3307 -> 容器内部 MySQL:3306
       - target: 3306
         published: *mysql-port
         host_ip: 0.0.0.0
@@ -89,7 +89,7 @@ services:
       start_period: 60s
 
   web:
-    # 榛樿鑷姩璺熼殢鏈€鏂扮増锛涢渶瑕佸浐瀹氱増鏈椂鏀逛负 linjuli2026/it-imp-web:20260810銆?
+    # 默认自动跟随最新版；需要固定版本时改为 linjuli2026/it-imp-web:20260818。
     image: linjuli2026/it-imp-web:latest
     restart: unless-stopped
     depends_on:
@@ -98,7 +98,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      # 浠ヤ笅鏄?Docker 鍐呴儴杩炴帴锛氬繀椤讳繚鎸?db:3306锛屼笉瑕佹敼涓?NAS_IP:3307銆?
+      # 以下是 Docker 内部连接：必须保持 db:3306，不要改为 NAS_IP:3307。
       DATABASE_HOST: db
       DATABASE_PORT: "3306"
       DATABASE_USER: root
@@ -111,7 +111,7 @@ services:
       PORT: "3000"
       TZ: *timezone
     ports:
-      # 澶栭儴 NAS_IP:31956 -> 瀹瑰櫒鍐呴儴 Web:3000
+      # 外部 NAS_IP:31956 -> 容器内部 Web:3000
       - target: 3000
         published: *web-port
         host_ip: 0.0.0.0

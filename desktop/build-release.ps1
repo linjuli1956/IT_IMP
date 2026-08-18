@@ -26,7 +26,7 @@ if (-not (Test-Path -LiteralPath $versionFile)) {
 }
 $releaseVersion = (Get-Content -LiteralPath $versionFile -Raw).Trim()
 if ($releaseVersion -notmatch '^\d{8}$') {
-    throw "VERSION must use YYYYMMDD format, for example 20260810. Current value: $releaseVersion"
+    throw "VERSION must use YYYYMMDD format, for example 20260818. Current value: $releaseVersion"
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
