@@ -42,6 +42,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # go:embed all:frontend/dist 要求编译期 dist 存在，先真实构建桌面前端
+      - run: npm ci
+        working-directory: desktop/frontend
+      - run: npm run build
+        working-directory: desktop/frontend
       - run: go test ./...
         working-directory: desktop
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0

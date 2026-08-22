@@ -39,7 +39,11 @@ jobs:
           npm run typecheck
           npm test -- --run
           npm run build
-          cd ../desktop
+          # go:embed all:frontend/dist 要求编译期 dist 存在，先真实构建桌面前端
+          cd ../desktop/frontend
+          npm ci
+          npm run build
+          cd ..
           go test ./...
           cd ..
           echo "发布门禁全部通过"
