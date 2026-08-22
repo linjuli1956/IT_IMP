@@ -10,7 +10,30 @@ permissions:
   contents: read
 
 jobs:
+  # 桌面门禁：desktop 为 Windows 专属代码（DPAPI/Wails），必须在 Windows 真实编译与测试
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # go:embed all:frontend/dist 要求编译期 dist 存在，先真实构建桌面前端
+      - run: npm ci
+        working-directory: desktop/frontend
+      - run: npm run build
+        working-directory: desktop/frontend
+      - run: go test ./...
+        working-directory: desktop
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+      - run: wails build
+        working-directory: desktop
+
   publish:
+    needs: desktop
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +51,8 @@ jobs:
           go-version: '>=1.24'
 
       # 发布门禁：登录 Docker Hub 之前必须全部通过，任一失败即中止，不登录、不推送
-      - name: 发布门禁（npm ci/prisma/typecheck/test/build/go test）
+      # （桌面 Go/Wails 门禁由上方 Windows desktop job 真实执行，本 job 依赖其成功）
+      - name: 发布门禁（npm ci/prisma/typecheck/test/build）
         env:
           DATABASE_URL: "mysql://root:placeholder@localhost:3306/it_imp"
         run: |
@@ -39,12 +63,6 @@ jobs:
           npm run typecheck
           npm test -- --run
           npm run build
-          # go:embed all:frontend/dist 要求编译期 dist 存在，先真实构建桌面前端
-          cd ../desktop/frontend
-          npm ci
-          npm run build
-          cd ..
-          go test ./...
           cd ..
           echo "发布门禁全部通过"
 
