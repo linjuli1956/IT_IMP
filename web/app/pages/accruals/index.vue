@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <PageHeader title="计提表列表" subtitle="运营商费用计提管理" description="从批次详情生成计提表，电信按明细表匹配号码费用，移动/联通按发票金额生成；支持A5打印与批量打印，报销说明在详情页可复制" />
+    <PageHeader title="计提表列表" subtitle="运营商费用计提管理 - 打印模板选择" description="从批次详情生成计提表，电信按明细表匹配号码费用，移动/联通按发票金额生成；支持 A5/A4 打印模板选择与批量打印，报销说明在详情页可复制" />
 
     <!-- 筛选区 -->
     <div class="card filter-card">
@@ -73,15 +73,27 @@
       />
     </div>
   </div>
+
+  <!-- 打印模板选择器 -->
+  <PrintTemplateSelector
+    v-model="templateDialogVisible"
+    @confirm="handleTemplateConfirm"
+    @cancel="handleTemplateCancel"
+  />
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
+import PrintTemplateSelector from '~/components/common/PrintTemplateSelector.vue'
 
 const { accrualList, loading, fetchAccruals, deleteAccrual, deleteAccruals, getStatusText, getStatusType, getMethodText } = useAccrualData()
 
 // 权限：删除计提表需管理员/操作员（对齐 /api/accruals/:id DELETE）
 const canWrite = ref(false)
+
+// 打印模板选择弹窗
+const templateDialogVisible = ref(false)
+const pendingBatchRows = ref<any[]>([])
 
 onMounted(() => {
   const rawUser = localStorage.getItem('user_info')
@@ -156,15 +168,42 @@ async function handleBatchDelete(rows: any[]) {
   ElMessage.success(`已删除 ${rows.length} 项`)
 }
 
-// 单个打印
+// 单个打印 - 打开模板选择器
 function handlePrint(row: any) {
-  printAccrual(row)
+  pendingBatchRows.value = [row]
+  templateDialogVisible.value = true
 }
 
-// 批量打印
+// 批量打印 - 打开模板选择器
 function handleBatchPrint(rows: any[]) {
-  printAccruals(rows)
-  ElMessage.success(`正在打印 ${rows.length} 张计提表`)
+  pendingBatchRows.value = rows
+  templateDialogVisible.value = true
+}
+
+// 处理确认打印
+function handleTemplateConfirm(template: 'a5' | 'a4') {
+  const rows = pendingBatchRows.value
+  try {
+    if (rows.length === 1) {
+      printAccrual(rows[0], template)
+      ElMessage.success('正在打印...')
+    } else if (rows.length > 1) {
+      printAccruals(rows, template)
+      ElMessage.success(`正在打印 ${rows.length} 张计提表`)
+    }
+  } catch (e: any) {
+    // 列表页不更新打印状态；失败提示错误并清空待打印对象
+    ElMessage.error(e?.message || '打印失败')
+  } finally {
+    pendingBatchRows.value = []
+    templateDialogVisible.value = false
+  }
+}
+
+// 处理取消打印 - 不更新状态
+function handleTemplateCancel() {
+  pendingBatchRows.value = []
+  templateDialogVisible.value = false
 }
 </script>
 

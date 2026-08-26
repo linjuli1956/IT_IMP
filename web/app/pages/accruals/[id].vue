@@ -1,6 +1,6 @@
 <template>
   <div class="page-container" v-loading="loading">
-    <PageHeader :title="`计提表详情 ${accrual?.batchNo || ''}`" subtitle="计提明细与A5打印">
+    <PageHeader :title="`计提表详情 ${accrual?.batchNo || ''}`" subtitle="计提明细与打印模板选择">
       <template #actions>
         <el-button @click="navigateTo('/accruals')">返回列表</el-button>
         <el-button @click="copyAllReimbursement">
@@ -9,9 +9,9 @@
         </el-button>
         <el-button type="success" @click="handlePrint">
           <el-icon><Printer /></el-icon>
-          A5打印
+          打印
         </el-button>
-        <el-button type="primary" @click="handleDownload">下载Excel</el-button>
+        <el-button type="primary" @click="handleDownload">下载 Excel</el-button>
         <el-button v-if="isAllocation && canWrite" type="warning" @click="handleEdit">
           <el-icon><Edit /></el-icon>
           编辑费用项
@@ -139,6 +139,13 @@
         <el-button type="primary" :loading="editSaving" @click="handleEditSave">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 打印模板选择器 -->
+    <PrintTemplateSelector
+      v-model="templateDialogVisible"
+      @confirm="handleTemplateConfirm"
+      @cancel="handleTemplateCancel"
+    />
   </div>
 </template>
 
@@ -147,6 +154,7 @@ import { CopyDocument, Printer, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { generateReimbursementText } from '~/utils/reimbursement'
 import type { AccrualGroup } from '~/types/accrual'
+import PrintTemplateSelector from '~/components/common/PrintTemplateSelector.vue'
 
 const route = useRoute()
 const accrualId = Number(route.params.id)
@@ -162,6 +170,9 @@ const isAllocation = computed(() => accrual.value?.method === 'allocation')
 
 // 权限：编辑费用项需管理员/操作员（对齐 /api/accruals/:id PUT）
 const canWrite = ref(false)
+
+// 打印模板选择弹窗
+const templateDialogVisible = ref(false)
 
 // allocation 模式下存储的 invoiceAmount=subtotal，需从批次获取实际发票总额
 const batchTotalInvoice = ref(0)
@@ -331,20 +342,32 @@ async function copyAllReimbursement() {
   }
 }
 
-// A5打印（使用共享打印函数，不含报销说明）
+// A5 打印 - 打开模板选择器
 async function handlePrint() {
+  templateDialogVisible.value = true
+}
+
+// 处理确认打印
+async function handleTemplateConfirm(template: 'a5' | 'a4') {
   if (!accrual.value) return
+
   try {
-    doPrint(accrual.value)
+    doPrint(accrual.value, template)
   } catch (e: any) {
-    ElMessage.error(e.message || '打印失败')
+    ElMessage.error(e?.message || '打印失败')
     return
   }
-  // 更新状态为已打印
+
+  // 仅在打印窗口成功打开且文档写入未抛错后更新「已打印」
   await updateAccrualStatus(accrualId, 'printed')
   if (accrual.value) {
     accrual.value = { ...accrual.value, status: 'printed' }
   }
+}
+
+// 处理取消打印 - 不更新状态
+function handleTemplateCancel() {
+  templateDialogVisible.value = false
 }
 
 // 下载Excel（静态原型阶段提示）
