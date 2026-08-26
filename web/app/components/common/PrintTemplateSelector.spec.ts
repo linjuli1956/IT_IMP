@@ -88,7 +88,9 @@ describe('PrintTemplateSelector', () => {
     expect(options[1]!.classes()).not.toContain('is-selected')
     expect(options[0]!.attributes('aria-checked')).toBe('true')
     expect(wrapper.text()).toContain('A5（自动压缩）')
+    expect(wrapper.text()).toContain('A4 纸上输出横向 A5 版式，打印后可裁切；批量每页两份')
     expect(wrapper.text()).toContain('A4（自动分页）')
+    expect(wrapper.text()).toContain('A4 纵向正常字号，内容自然分页，每份独立开始')
 
     wrapper.unmount()
   })

@@ -241,7 +241,22 @@ describe('A5 打印', () => {
 
     const html = cap.written[0] ?? ''
     expect(html.startsWith('<!DOCTYPE html>')).toBe(true)
-    expect(html).toContain('@page { size: A5 landscape; margin: 0; }')
+    // 产品规则：A5 统一在 A4 纵向纸上输出横向 A5 版式（打印后裁切）
+    expect(html).toContain('@page { size: A4; margin: 0; }')
+    expect(html).not.toContain('A5 landscape')
+    // 单张 A5 = 一张 A4：两个固定槽位（210×148mm），表格只放上半槽位、下半槽位留空
+    expect((html.match(/<div class="a4-page">/g) ?? []).length).toBe(1)
+    expect((html.match(/<div class="a5-slot">/g) ?? []).length).toBe(2)
+    const pageBody = html.split('<div class="a4-page">')[1] ?? ''
+    const slotParts = pageBody.split('<div class="a5-slot">').slice(1)
+    expect(slotParts).toHaveLength(2)
+    expect(slotParts[0]).toContain('<table>')
+    expect(slotParts[0]).toContain('制表人：')
+    // 下半槽位为空（供沿中线裁切）
+    expect(pageBody).toContain('<div class="a5-slot"></div>')
+    expect(extractStyleBlock(html)).toContain('height: 148mm')
+    // 不再有整页居中的 .a5-page 版式
+    expect(html).not.toContain('a5-page')
     // 完整表格：标题/表头/边框/合计/制表人（视觉基线）
     expect(html).toContain('2026年08月中国电信计提表')
     expect(html).toContain('<table>')
@@ -341,12 +356,15 @@ describe('A5 打印', () => {
     expect(result.scales![2]).toBe(1)
 
     const html = cap.written[0] ?? ''
-    // 3 份 → 2 个 A4 容器（第一页 2 份、第二页 1 份）
+    // 3 份 → 2 个 A4 容器（第 1 张 A4 两份上/下槽位、第 2 张仅上半槽位一份）
     expect((html.match(/<div class="a4-page">/g) ?? []).length).toBe(2)
     expect((html.match(/<div class="a5-slot">/g) ?? []).length).toBe(3)
-    // A4 容器承载，仅每两份后分页
+    // A4 容器承载，只在每张 A4 后分页
     expect(html).toContain('@page { size: A4; margin: 0; }')
     expect(extractStyleBlock(html)).toContain('.a4-page { break-after: page; page-break-after: always; }')
+    // 槽位固定 210×148mm
+    expect(extractStyleBlock(html)).toContain('height: 148mm')
+    expect(html).not.toContain('a5-page')
     // 同一文档中同时存在缩小与不缩小的两份（独立缩放）
     const rowHeights = extractPsRowHeights(html)
     expect(rowHeights).toHaveLength(3)

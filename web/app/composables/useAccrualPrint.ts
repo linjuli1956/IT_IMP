@@ -4,11 +4,14 @@
  * 视觉基线：HEAD 中 A5 打印实现（标题 + 完整表格：表头/边框/列宽/行高/小计/合计/制表人）。
  * 本实现修复基线中「固定高度 148mm + overflow:hidden 裁剪」导致的截断问题：
  *
- * A5（自动压缩）：
+ * A5（自动压缩，输出在 A4 纵向纸上，打印后裁切）：
+ * - 统一使用 @page A4 纵向；每张 A4 固定两个上下排列的横向 A5 槽位（210×148mm）；
  * - 隐藏 DOM 测量区（Shadow DOM，CSS 与最终打印区完全一致）测量内容自然高度；
  * - 高度统一按像素计算（96dpi，mm→px 换算），禁止 px/mm 直接相除；
- * - 每份独立测量、独立 scale，等比缩放后完整放进一张横向 A5，不截断、不续页；
- * - 批量 A5：每份独立测量缩放，两份排一张 A4，仅第二份后分页；
+ * - 缩放始终以「单个 A5 槽位的可用高度」计算，绝不按整张 A4 高度；
+ * - 单张 A5：输出一张 A4，计提表只放上半槽位，下半槽位留空供沿中线裁切；
+ * - 批量 A5：每份独立测量缩放，第一、二份占同一张 A4 的上/下槽位，
+ *   第三份从下一张 A4 上半槽位开始，只在每张 A4 后分页；
  * - 禁止 overflow:hidden / 固定高度裁剪 / 嵌套完整 HTML 文档。
  *
  * A4（自动分页）：
@@ -62,7 +65,7 @@ const A5_PAD_V_PX = mmToPx(8)
 const A5_PAD_H_PX = mmToPx(10)
 /** 测量安全余量（px）：吸收字体渲染差异，保证不溢出到第二页 */
 const A5_SAFETY_PX = 4
-/** A5 内容可用高度（px）：页面高度 - 上下留白 - 安全余量 */
+/** A5 内容可用高度（px）：单个 A5 槽位（148mm）高度 - 上下留白 - 安全余量 */
 const A5_USABLE_HEIGHT_PX = A5_HEIGHT_PX - A5_PAD_V_PX * 2 - A5_SAFETY_PX
 /** A4 内容可用高度（px）：297mm - 上下 15mm 留白 */
 const A4_CONTENT_HEIGHT_PX = mmToPx(297 - 15 - 15)
@@ -317,16 +320,10 @@ const TITLE_FOOTER_CSS = `
 const A5_CONTENT_CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #fff; font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; }
-.a5-page {
-  width: 210mm;
-  height: 148mm;
-  padding: ${A5_PAD_V_PX}px ${A5_PAD_H_PX}px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
+/* 每张 A4 固定两个上下排列的横向 A5 槽位：宽 210mm、高 148mm（裁切线在槽位交界处） */
 .a5-slot {
   width: 210mm;
+  height: 148mm;
   padding: ${A5_PAD_V_PX}px ${A5_PAD_H_PX}px;
 }
 .a5-content {
@@ -387,12 +384,11 @@ ${TABLE_CSS}
 ${TITLE_FOOTER_CSS}
 `
 
-/** 构建 A5 打印文档 CSS（含 @page） */
-function buildA5DocCss(mode: 'single' | 'batch'): string {
-  if (mode === 'single') {
-    return `@page { size: A5 landscape; margin: 0; }\n${A5_CONTENT_CSS}`
-  }
-  // 批量：A4 容器每页承载两份 A5，仅第二份后分页
+/**
+ * 构建 A5 打印文档 CSS（含 @page）。
+ * 产品规则：A5 不输出物理 A5 纸，统一在 A4 纵向纸上输出横向 A5 版式（打印后裁切）。
+ */
+function buildA5DocCss(): string {
   return `@page { size: A4; margin: 0; }\n`
     + `.a4-page { break-after: page; page-break-after: always; }\n`
     + `.a4-page:last-child { break-after: auto; page-break-after: auto; }\n`
@@ -453,12 +449,13 @@ export function useAccrualPrint(options: AccrualPrintOptions = {}) {
 
   /**
    * 测量 A5 内容自然高度：Shadow DOM 隐藏测量区 + 与打印完全相同的 CSS/HTML。
+   * 测量/缩放均以单个 A5 槽位为准（与打印布局一致）。
    */
-  function measureA5ContentHeight(accrual: Accrual, wrapperClass: 'a5-page' | 'a5-slot'): number {
+  function measureA5ContentHeight(accrual: Accrual): number {
     const { host, root } = createMeasurer()
     try {
       root.innerHTML = `<style>${A5_CONTENT_CSS}</style>`
-        + `<div class="${wrapperClass}"><div class="a5-content">${buildBodyHtml(accrual)}</div></div>`
+        + `<div class="a5-slot"><div class="a5-content">${buildBodyHtml(accrual)}</div></div>`
       const content = root.querySelector<HTMLElement>('.a5-content')
       if (!content) return 0
       return measureHeight(content)
@@ -538,14 +535,14 @@ ${bodyHtmlContent}
       return { template, pageBreaks }
     }
 
-    // A5：独立测量 + 独立缩放，完整放进一张横向 A5
-    const measured = measureA5ContentHeight(accrual, 'a5-page')
+    // A5：独立测量 + 独立缩放，输出一张 A4，计提表放上半槽位、下半槽位留空供裁切
+    const measured = measureA5ContentHeight(accrual)
     const scale = computeA5Scale(measured, A5_USABLE_HEIGHT_PX)
-    const bodyHtml = `<div class="a5-page">`
-      + `<div class="a5-content" style="${buildA5ScaleStyle(scale)}">`
-      + buildBodyHtml(accrual)
-      + `</div></div>`
-    openPrintWindow(buildA5DocCss('single'), bodyHtml, title)
+    const bodyHtml = `<div class="a4-page">`
+      + `<div class="a5-slot"><div class="a5-content" style="${buildA5ScaleStyle(scale)}">${buildBodyHtml(accrual)}</div></div>`
+      + `<div class="a5-slot"></div>`
+      + `</div>`
+    openPrintWindow(buildA5DocCss(), bodyHtml, title)
     return { template, scale }
   }
 
@@ -572,7 +569,7 @@ ${bodyHtmlContent}
 
     const scales: number[] = []
     const slots = accruals.map(a => {
-      const measured = measureA5ContentHeight(a, 'a5-slot')
+      const measured = measureA5ContentHeight(a)
       const scale = computeA5Scale(measured, A5_USABLE_HEIGHT_PX)
       scales.push(scale)
       return `<div class="a5-slot">`
@@ -581,12 +578,12 @@ ${bodyHtmlContent}
         + `</div></div>`
     })
 
-    // 每两份一个 A4 容器，仅第二份后分页
+    // 每张 A4 两个槽位（上/下），第三份从下一张 A4 上半槽位开始，只在每张 A4 后分页
     const pages: string[] = []
     for (let i = 0; i < slots.length; i += 2) {
       pages.push(`<div class="a4-page">${slots[i]}${i + 1 < slots.length ? slots[i + 1] : ''}</div>`)
     }
-    openPrintWindow(buildA5DocCss('batch'), pages.join(''), title)
+    openPrintWindow(buildA5DocCss(), pages.join(''), title)
     return { template, scales }
   }
 

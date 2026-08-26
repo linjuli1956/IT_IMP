@@ -70,13 +70,13 @@ const options: TemplateOption[] = [
   {
     value: 'a5',
     name: 'A5（自动压缩）',
-    desc: '一张计提表完整放在一张 A5 内，等比压缩内容，不截断',
+    desc: 'A4 纸上输出横向 A5 版式，打印后可裁切；批量每页两份',
     icon: Printer,
   },
   {
     value: 'a4',
     name: 'A4（自动分页）',
-    desc: 'A4 纵向正常字号，内容自然分页，每份独立一页',
+    desc: 'A4 纵向正常字号，内容自然分页，每份独立开始',
     icon: Document,
   },
 ]
