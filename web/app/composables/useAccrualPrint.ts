@@ -319,12 +319,15 @@ const TITLE_FOOTER_CSS = `
 /** A5 内容 CSS：测量区与打印区共用（不含 @page，@page 仅存在于打印文档） */
 const A5_CONTENT_CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #fff; font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; }
+body { background: #fff; }
 /* 每张 A4 固定两个上下排列的横向 A5 槽位：宽 210mm、高 148mm（裁切线在槽位交界处） */
 .a5-slot {
   width: 210mm;
   height: 148mm;
   padding: ${A5_PAD_V_PX}px ${A5_PAD_H_PX}px;
+  /* 字体必须在测量区与打印区共用的容器上声明：
+     Shadow DOM 测量区没有 body，若只在 body 声明会继承宿主页面字体，测量≠打印 */
+  font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
 }
 .a5-content {
   width: 100%;
@@ -365,12 +368,14 @@ ${TITLE_FOOTER_CSS}
 /** A4 内容 CSS：测量区与打印区共用（不含 @page） */
 const A4_CONTENT_CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #fff; font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; }
+body { background: #fff; }
 .a4-page {
   width: 210mm;
   padding: ${mmToPx(15)}px ${mmToPx(20)}px;
   break-after: page;
   page-break-after: always;
+  /* 字体在测量区与打印区共用容器上声明（Shadow DOM 测量区无 body） */
+  font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
 }
 .a4-page:last-child {
   break-after: auto;

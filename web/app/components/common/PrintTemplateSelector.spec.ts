@@ -241,3 +241,35 @@ describe('详情页打印链路（取消不打印、不更新状态）', () => {
     wrapper.unmount()
   })
 })
+
+describe('确认事件顺序', () => {
+  it('父组件记录事件：先关闭 v-model 后 emit confirm，且不产生 cancel', async () => {
+    const events: string[] = []
+    const visible = ref(true)
+
+    const Harness = defineComponent({
+      components: { PrintTemplateSelector },
+      setup() {
+        return () => h('div', [
+          h(PrintTemplateSelector, {
+            modelValue: visible.value,
+            'onUpdate:modelValue': (v: boolean) => { events.push('update:modelValue'); visible.value = v },
+            onConfirm: () => events.push('confirm'),
+            onCancel: () => events.push('cancel'),
+          }),
+        ])
+      },
+    })
+
+    const wrapper = mount(Harness, { global: { stubs } })
+    await wrapper.vm.$nextTick()
+
+    // 同一次「确认打印」点击调用链：严格顺序 update:modelValue(false) → confirm
+    await buttonByText(wrapper, '确认打印').trigger('click')
+
+    expect(events).toEqual(['update:modelValue', 'confirm'])
+    expect(events).not.toContain('cancel')
+
+    wrapper.unmount()
+  })
+})

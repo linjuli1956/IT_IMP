@@ -85,10 +85,10 @@ function select(value: PrintTemplate) {
   selectedTemplate.value = value
 }
 
-/** 确认：仅发 confirm 并关闭，绝不额外触发 cancel */
+/** 确认：先关闭 v-model 再发 confirm，两步保持同一次「确认打印」点击调用链内，不触发 cancel */
 function handleConfirm() {
-  emit('confirm', selectedTemplate.value)
   emit('update:modelValue', false)
+  emit('confirm', selectedTemplate.value)
 }
 
 /** 取消按钮：发 cancel 并关闭 */
