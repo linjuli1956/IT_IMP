@@ -58,7 +58,7 @@ MySQL 的远程 root 权限只在空数据目录首次初始化时创建。已�
 > 镜像 tag 与根目录 `VERSION` 一致（YYYYMMDD 格式），由 CI 在发布门禁全部通过后从 `VERSION` 读取构建。本仓库维护环境未安装 Docker，Compose 与 Dockerfile 变更由 CI 及 Docker 构建环境验证。
 
 ```yaml
-image: linjuli2026/it-imp-web:20260818
+image: linjuli2026/it-imp-web:20260829
 ```
 
 更新最新镜像：

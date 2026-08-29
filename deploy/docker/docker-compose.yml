@@ -9,7 +9,7 @@
 #   - db：MySQL 数据库，容器内部端口固定为 3306。
 #   - web：管理平台，容器内部端口固定为 3000。
 #
-# 固定日期版本：将 web.image 的 latest 改为例如 20260818。
+# 固定日期版本：将 web.image 的 latest 改为例如 20260829。
 
 x-it-imp-settings:
   # ======== 必须修改：换成你自己的强密码，不能直接使用中文占位值或示例值 ========
@@ -89,7 +89,7 @@ services:
       start_period: 60s
 
   web:
-    # 默认自动跟随最新版；需要固定版本时改为 linjuli2026/it-imp-web:20260818。
+    # 默认自动跟随最新版；需要固定版本时改为 linjuli2026/it-imp-web:20260829。
     image: linjuli2026/it-imp-web:latest
     restart: unless-stopped
     depends_on:

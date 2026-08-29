@@ -2,7 +2,7 @@
 
 一个可自托管的综合管理平台。项目维护一套 `web/` 业务源码，并提供 Windows EXE 与 Docker Compose 两种部署方式。
 
-当前发布日期版本：`20260818`。
+当前发布日期版本：`20260829`。
 
 ## Docker Compose（推荐）
 
@@ -34,7 +34,7 @@ docker compose up -d
 .\desktop\build-release.ps1
 ```
 
-发布包位于 `desktop/build/release/IT_IMP-20260818/`，配置工具默认显示“综合管理平台-配置工具 20260818”。
+发布包位于 `desktop/build/release/IT_IMP-20260829/`，配置工具默认显示“综合管理平台-配置工具 20260829”。
 
 > 发布脚本会自动寻找本机 Bun（`BUN_EXE` 环境变量 → `~/.bun/bin/bun.exe` → PATH）并复制进发布包的 `bun/` 目录；若本机未安装 Bun，请先安装：`powershell -c "irm bun.sh/install.ps1 | iex"`。
 
@@ -62,7 +62,11 @@ npm.cmd --prefix web run build
 
 修改 `desktop/` 时另需执行 `go test ./...` 与桌面前端构建，完整清单见 [贡献指南](CONTRIBUTING.md)。
 
-## 本版本变更（20260818）
+## 本版本变更（20260829）
+
+- 计提表打印新增模板选择：A5 模板在一张 A4 上输出可裁切的横向 A5 版式；A4 模板使用自然分页，适合长表打印。
+
+## 上一版本变更（20260818）
 
 - 登录文件预览：合同/发票 PDF 预览改为在用户点击阶段预开空白窗口，避免浏览器丢失用户手势误拦截弹窗；token 仅走 Authorization 头，不进 URL；
 - 域名/小程序/支付配置接口输入收紧：请求体类型与字段白名单校验、更新仅传白名单字段、非法 ID 与非法类型统一返回 400 而非 500；

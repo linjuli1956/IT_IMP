@@ -1,5 +1,5 @@
 const DEFAULT_APP_NAME = '综合管理平台'
-const APP_VERSION = '20260818'
+const APP_VERSION = '20260829'
 
 export function useAppBrand() {
   const runtimeConfig = useRuntimeConfig()
