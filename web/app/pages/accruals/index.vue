@@ -10,7 +10,7 @@
             <el-option v-for="c in carrierOptions" :key="c.value" :label="c.label" :value="c.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="费用月">
+        <el-form-item label="计提月份">
           <el-date-picker v-model="filters.feeMonth" type="month" placeholder="选择月份" value-format="YYYY-MM" style="width: 150px" />
         </el-form-item>
         <el-form-item label="状态">
@@ -117,7 +117,8 @@ const carrierOptions = [
 const columns = [
   { prop: 'batchNo', label: '批次号', width: 140, slot: 'batchNo' },
   { prop: 'carrier', label: '运营商', width: 100 },
-  { prop: 'feeMonth', label: '费用月', width: 100, align: 'center' as const },
+  { prop: 'batchFeeMonth', label: '费用月', width: 100, align: 'center' as const },
+  { prop: 'feeMonth', label: '计提月份', width: 100, align: 'center' as const },
   { prop: 'method', label: '计提方式', width: 100, align: 'center' as const, slot: 'method' },
   { prop: 'storeCount', label: '门店数', width: 80, align: 'center' as const, slot: 'storeCount' },
   { prop: 'totalAmount', label: '合计金额', width: 130, align: 'right' as const, slot: 'totalAmount' },

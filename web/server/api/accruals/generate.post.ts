@@ -2,21 +2,27 @@
  * 生成计提表 API
  * POST /api/accruals/generate
  * 请求头: Authorization: Bearer xxx (需管理员或操作员)
- * 请求体: { batchId, templateOverrides?, detailTableId?, schemeId?, manualAdjustments? }
+ * 请求体: { batchId, templateOverrides?, detailTableId?, schemeId?, manualAdjustments?, feeMonth? }
  *   - batchId: 必填，发票批次ID
  *   - templateOverrides: 可选，{ [store: string]: number } 门店→模板ID映射
  *   - detailTableId: 可选，明细表ID（undefined=自动判断, 0=按发票, >0=按指定明细表）
  *   - schemeId: 可选，费用分摊方案ID（>0=按费用分摊模式生成）
  *   - manualAdjustments: 可选，{ [key]: number } 手动费用项金额映射
+ *   - feeMonth: 可选，计提月份（YYYY-MM）；缺省 = 批次费用月的下个月
  *
  * 计提生成逻辑：
  * - 电信：按明细表生成（号码行匹配明细表取应收合计，非号码行倒推计算）
  * - 移动/联通：按发票生成（发票金额填入模板行）
  * - 多门店发票按门店数均摊金额
+ *
+ * 月份语义：
+ * - 计提表 feeMonth 存「计提月份」（打印标题月份）；
+ * - 报销说明与「费用月」（批次发票月）绑定，与计提月份无关。
  */
 import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
 import { readBody, createError, type H3Event } from 'h3'
+import { resolveAccrualMonth } from '../../../app/utils/month'
 
 /** 将 Date 格式化为 YYYY-MM-DD HH:mm */
 function formatDate(date: Date): string {
@@ -97,7 +103,7 @@ function filterItemsByStore(items: any[], store: string): any[] {
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
   const body = await readBody(event)
-  const { batchId, templateOverrides, detailTableId, schemeId, manualAdjustments } = body
+  const { batchId, templateOverrides, detailTableId, schemeId, manualAdjustments, feeMonth } = body
 
   if (!batchId || isNaN(Number(batchId))) {
     throw createError({ statusCode: 400, message: '无效的批次ID' })
@@ -111,6 +117,12 @@ export default defineEventHandler(async (event: H3Event) => {
 
   if (!batch) {
     throw createError({ statusCode: 404, message: '批次不存在或已删除' })
+  }
+
+  // 计提月份：显式选择优先，缺省为费用月的下个月；非法则不写库
+  const accrualMonth = resolveAccrualMonth(batch.feeMonth, feeMonth)
+  if (!accrualMonth) {
+    throw createError({ statusCode: 400, message: '计提月份格式无效（应为 YYYY-MM）' })
   }
 
   if (!batch.invoices || batch.invoices.length === 0) {
@@ -290,7 +302,7 @@ export default defineEventHandler(async (event: H3Event) => {
         const template = findTemplateForStore(templates, batch.carrier, store, overrideMap)
         if (!template) continue
         storeTemplates.set(store, template)
-      
+
         const sheets = (detailTable.sheets as any[]) || []
         let sheet = sheets.find((s: any) => s.store === store)
         if (!sheet) {
@@ -304,7 +316,7 @@ export default defineEventHandler(async (event: H3Event) => {
           console.warn(`[计提] 未找到门店「${store}」对应的明细表 sheet，已汇总全部 sheet 行作为兜底。可用 sheet:`, sheets.map(s => s.store))
         }
         storeEffectiveRowsMap.set(store, effectiveRows)
-      
+
         // 按门店过滤模板 items（支持一个模板覆盖多门店）
         const templateItems = filterItemsByStore((template.items as any[]) || [], store)
         for (const item of templateItems) {
@@ -438,13 +450,13 @@ export default defineEventHandler(async (event: H3Event) => {
   // 9. 计算合计
   const totalAmount = groups.reduce((sum, g) => sum + g.subtotal, 0)
 
-  // 10. 存库
+  // 10. 存库（feeMonth = 计提月份，报销说明仍按批次费用月生成）
   const accrual = await prisma.accrual.create({
     data: {
       batchId: batch.id,
       batchNo: batch.batchNo,
       carrier: batch.carrier,
-      feeMonth: batch.feeMonth,
+      feeMonth: accrualMonth,
       method,
       totalAmount,
       status: 'generated',
@@ -471,11 +483,12 @@ export default defineEventHandler(async (event: H3Event) => {
     },
   })
 
-  // 13. 返回序列化结果
+  // 13. 返回序列化结果（batchFeeMonth = 批次费用月，供前端同时展示费用月/计提月份）
   return {
     ...accrual,
     totalAmount: Number(accrual.totalAmount),
     createTime: formatDate(accrual.createTime),
     groups: accrual.groups,
+    batchFeeMonth: batch.feeMonth,
   }
 })

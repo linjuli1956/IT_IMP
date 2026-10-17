@@ -28,6 +28,22 @@
         <div class="section-header">
           <span class="section-title">计提方式</span>
         </div>
+
+        <!-- 计提月份：默认费用月的下个月；报销说明仍按费用月生成 -->
+        <el-form :inline="true" class="accrual-month-form">
+          <el-form-item label="计提月份">
+            <el-date-picker
+              v-model="accrualMonth"
+              type="month"
+              value-format="YYYY-MM"
+              :clearable="false"
+              placeholder="选择计提月份"
+              style="width: 160px"
+            />
+            <span class="month-hint">默认费用月的下个月（费用月 {{ batch.feeMonth }}）；报销说明仍按费用月生成</span>
+          </el-form-item>
+        </el-form>
+
         <el-radio-group v-model="generateMethod" @change="onMethodChange">
           <el-radio-button value="detail">按明细表（电信号码匹配）</el-radio-button>
           <el-radio-button value="invoice">按发票均摊</el-radio-button>
@@ -208,6 +224,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { generateReimbursementText } from '~/utils/reimbursement'
+import { getNextMonth, isValidMonth } from '~/utils/month'
 
 const route = useRoute()
 const batchId = Number(route.params.id)
@@ -271,6 +288,9 @@ function onDetailChange() {
 // 预览组数据
 const previewGroups = ref<PreviewGroup[]>([])
 const generating = ref(false)
+
+// 计提月份（默认费用月的下个月）
+const accrualMonth = ref('')
 
 interface PreviewGroup {
   store: string
@@ -415,7 +435,7 @@ function generatePreview() {
       const template = findByCarrierStoreOrDept(batch.value.carrier, store)
       if (!template) continue
       storeTemplates.set(store, template)
-      
+
       // 明细表 sheet 匹配：精确 → 包含 → 全 sheet 汇总
       const allSheets = (selectedDetailTable.value.sheets as any[]) || []
       let sheet = allSheets.find((s: any) => s.store === store)
@@ -430,7 +450,7 @@ function generatePreview() {
         console.warn(`[计提] 未找到门店「${store}」对应的明细表 sheet，已汇总全部 sheet 行作为兜底。可用 sheet:`, allSheets.map(s => s.store))
       }
       storeEffectiveRowsMap.set(store, effectiveRows)
-      
+
       // 按门店过滤模板 items（支持一个模板覆盖多门店）
       const filteredItems = filterItemsByStore(template.items, store)
       let phoneTotal = 0
@@ -664,7 +684,7 @@ function updatePreviewGroup(group: PreviewGroup) {
   }
 }
 
-// 确认生成
+// 确认生成：按页面所选计提月份生成
 async function handleGenerate() {
   if (!batch.value) return
 
@@ -678,6 +698,11 @@ async function handleGenerate() {
     return
   }
 
+  if (!isValidMonth(accrualMonth.value)) {
+    ElMessage.warning('请选择有效的计提月份')
+    return
+  }
+
   generating.value = true
   try {
     let result: any = null
@@ -687,6 +712,7 @@ async function handleGenerate() {
         batchId,
         schemeId: selectedSchemeId.value,
         manualAdjustments: manualAdjustments.value,
+        feeMonth: accrualMonth.value,
       })
     } else {
       const templateOverrides: Record<string, number> = {}
@@ -697,6 +723,7 @@ async function handleGenerate() {
         batchId,
         templateOverrides,
         detailTableId: selectedDetailId.value ?? undefined,
+        feeMonth: accrualMonth.value,
       })
     }
 
@@ -725,6 +752,10 @@ onMounted(async () => {
     if (fetched && !getBatchById(batchId)) {
       batchList.value.push(fetched)
     }
+  }
+  // 默认计提月份 = 费用月的下个月
+  if (batch.value) {
+    accrualMonth.value = getNextMonth(batch.value.feeMonth) || batch.value.feeMonth
   }
   if (templateList.value.length === 0) {
     await fetchTemplates()
@@ -835,5 +866,15 @@ onMounted(async () => {
 
 .consolidated-card {
   border: 2px solid var(--color-primary-border);
+}
+
+.accrual-month-form {
+  margin-bottom: var(--spacing-sm);
+}
+
+.month-hint {
+  margin-left: var(--spacing-sm);
+  font-size: var(--font-size-small);
+  color: var(--text-regular);
 }
 </style>

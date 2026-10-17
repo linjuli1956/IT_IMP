@@ -78,6 +78,14 @@ export default defineEventHandler(async (event: H3Event) => {
       }
     }
 
+    // 报销说明按「费用月」（批次发票月）生成，与计提月份无关；
+    // Accrual 与 InvoiceBatch 无关联，按 batchId 查询；批次已删时回退到计提月份
+    const batch = await prisma.invoiceBatch.findUnique({
+      where: { id: existing.batchId },
+      select: { feeMonth: true },
+    })
+    const reimbursementMonth = batch?.feeMonth || existing.feeMonth
+
     // 重新计算每个 group 的 subtotal 和 reimbursementText
     for (const g of groups) {
       g.subtotal = (g.rows || []).reduce((sum: number, r: any) => sum + r.amount, 0)
@@ -86,7 +94,7 @@ export default defineEventHandler(async (event: H3Event) => {
         g.reimbursementCustom || '',
         (g.rows || []).map((r: any) => ({ dept: r.dept, name: r.name, amount: r.amount, feeType: r.feeType })),
         g.store,
-        existing.feeMonth,
+        reimbursementMonth,
         existing.carrier,
       )
     }

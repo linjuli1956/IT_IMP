@@ -25,7 +25,8 @@
         <el-descriptions :column="4" border>
           <el-descriptions-item label="批次号">{{ accrual.batchNo }}</el-descriptions-item>
           <el-descriptions-item label="运营商">{{ accrual.carrier }}</el-descriptions-item>
-          <el-descriptions-item label="费用月">{{ accrual.feeMonth }}</el-descriptions-item>
+          <el-descriptions-item label="费用月">{{ accrual.batchFeeMonth || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="计提月份">{{ accrual.feeMonth }}</el-descriptions-item>
           <el-descriptions-item label="计提方式">
             <el-tag size="small" :type="accrual.method === 'detail' ? 'warning' : accrual.method === 'allocation' ? 'success' : 'info'">
               {{ getMethodText(accrual.method) }}
@@ -285,7 +286,8 @@ const consolidatedReimbursementText = computed(() => {
     firstGroup.reimbursementCustom,
     allRows,
     storeLabel,
-    accrual.value.feeMonth,
+    // 报销说明与「费用月」（批次发票月）绑定，与计提月份无关；批次已删时回退到计提月份
+    accrual.value.batchFeeMonth || accrual.value.feeMonth,
     accrual.value.carrier,
   )
 })

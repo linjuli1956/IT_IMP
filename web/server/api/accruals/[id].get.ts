@@ -34,10 +34,17 @@ export default defineEventHandler(async (event: H3Event) => {
     throw createError({ statusCode: 404, message: '计提表不存在或已删除' })
   }
 
+  // 批次费用月（发票费用月）：Accrual 与 InvoiceBatch 无关联，按 batchId 查询
+  const batch = await prisma.invoiceBatch.findUnique({
+    where: { id: accrual.batchId },
+    select: { feeMonth: true },
+  })
+
   return {
     ...accrual,
     totalAmount: Number(accrual.totalAmount),
     createTime: formatDate(accrual.createTime),
     groups: accrual.groups,
+    batchFeeMonth: batch?.feeMonth ?? '',
   }
 })

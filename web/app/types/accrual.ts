@@ -30,13 +30,14 @@ export interface Accrual {
   batchId: number         // 关联批次ID
   batchNo: string         // 批次号
   carrier: string         // 运营商
-  feeMonth: string        // 费用月
+  feeMonth: string        // 计提月份（打印标题月份），默认费用月次月
   method: 'detail' | 'invoice' | 'allocation'  // 计提方式
   groups: AccrualGroup[]  // 按门店分组
   totalAmount: number     // 合计金额
   status: 'generated' | 'printed'  // 状态
   createTime: string      // 创建时间
   creator: string         // 制表人
+  batchFeeMonth?: string  // 批次费用月（发票费用月）；批次已删除时为空串
 }
 
 // 重新导出 DetailTable 供计提模块使用

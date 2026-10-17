@@ -19,13 +19,14 @@ function formatDate(date: Date): string {
   return `${y}-${m}-${d} ${h}:${min}`
 }
 
-/** 序列化计提表记录（Decimal → number, Date → string） */
-function serializeAccrual(a: any) {
+/** 序列化计提表记录（Decimal → number, Date → string, 附加批次费用月） */
+function serializeAccrual(a: any, batchFeeMonth: string) {
   return {
     ...a,
     totalAmount: Number(a.totalAmount),
     createTime: formatDate(a.createTime),
     groups: a.groups,
+    batchFeeMonth,
   }
 }
 
@@ -47,5 +48,15 @@ export default defineEventHandler(async (event: H3Event) => {
     orderBy: { id: 'desc' },
   })
 
-  return accruals.map(serializeAccrual)
+  // 批次费用月（发票费用月）：Accrual 与 InvoiceBatch 无关联，按 batchId 批量查询
+  const batchIds = [...new Set(accruals.map(a => a.batchId))]
+  const batches = batchIds.length > 0
+    ? await prisma.invoiceBatch.findMany({
+        where: { id: { in: batchIds } },
+        select: { id: true, feeMonth: true },
+      })
+    : []
+  const feeMonthMap = new Map(batches.map(b => [b.id, b.feeMonth]))
+
+  return accruals.map(a => serializeAccrual(a, feeMonthMap.get(a.batchId) ?? ''))
 })
