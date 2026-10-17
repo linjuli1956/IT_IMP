@@ -50,8 +50,9 @@ export default defineEventHandler(async (event: H3Event) => {
     data.status = status
 
     // 同步更新批次状态
+    // 注意：批次可能已被删除（无外键，计提表可能是孤儿记录），用 updateMany 容忍 0 条更新
     const batchStatus = status === 'printed' ? 'printed' : 'accrued'
-    await prisma.invoiceBatch.update({
+    await prisma.invoiceBatch.updateMany({
       where: { id: existing.batchId },
       data: { status: batchStatus },
     })

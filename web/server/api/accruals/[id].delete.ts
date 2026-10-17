@@ -31,7 +31,9 @@ export default defineEventHandler(async (event: H3Event) => {
   await prisma.accrual.delete({ where: { id } })
 
   // 恢复批次状态为 pending
-  await prisma.invoiceBatch.update({
+  // 注意：批次删除接口不会连带删除计提表（无外键），计提表可能成为孤儿记录；
+  // 此时批次已不存在，用 updateMany 容忍 0 条更新，避免 P2025 报错
+  await prisma.invoiceBatch.updateMany({
     where: { id: accrual.batchId },
     data: { status: 'pending' },
   })
