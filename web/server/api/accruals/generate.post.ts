@@ -28,7 +28,6 @@ import { readBody, createError, type H3Event } from 'h3'
 import { resolveAccrualMonth } from '../../../app/utils/month'
 import {
   resolveStoreInvoiceAllocations,
-  buildInvoiceRemark,
 } from '../../../app/utils/invoice-allocation'
 
 /** 将 Date 格式化为 YYYY-MM-DD HH:mm */
@@ -53,6 +52,7 @@ interface AccrualRow {
   remark: string
   source: 'detail' | 'invoice' | 'calculated' | 'preset' | 'allocation' | 'manual'
   feeType: string
+  unit?: string
 }
 
 interface AccrualGroup {
@@ -392,6 +392,7 @@ export default defineEventHandler(async (event: H3Event) => {
             remark: item.remark || '',
             source: isPhone ? 'detail' : 'calculated',
             feeType: '',
+            unit: item.unit || '',
           })
         }
       } else {
@@ -415,11 +416,10 @@ export default defineEventHandler(async (event: H3Event) => {
               dept: [...(item.dept as string[])],
               name: item.name,
               amount: mapped ? mapped.amount : (Number(item.amount) || 0),
-              remark: mapped
-                ? buildInvoiceRemark(item.remark || '', mapped.invoices)
-                : (item.remark || ''),
+              remark: item.remark || '',
               source: mapped ? 'invoice' : 'preset',
               feeType: '',
+              unit: item.unit || '',
             })
           })
         } else {
@@ -434,6 +434,7 @@ export default defineEventHandler(async (event: H3Event) => {
                 remark: item.remark || '',
                 source: 'preset',
                 feeType: '',
+                unit: item.unit || '',
               })
             }
           } else {
@@ -447,6 +448,7 @@ export default defineEventHandler(async (event: H3Event) => {
                 remark: item.remark || '',
                 source: itemIdx === 0 ? 'invoice' : 'preset',
                 feeType: '',
+                unit: item.unit || '',
               })
               itemIdx++
             }
@@ -462,7 +464,7 @@ export default defineEventHandler(async (event: H3Event) => {
       const reimbursementText = generateReimbursementText(
         template.reimbursementFormat || '',
         template.reimbursementCustom || '',
-        rows.map(r => ({ dept: r.dept, name: r.name, amount: r.amount })),
+        rows.map(r => ({ dept: r.dept, name: r.name, amount: r.amount, unit: r.unit })),
         store,
         batch.feeMonth,
         batch.carrier,

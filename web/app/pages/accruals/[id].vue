@@ -270,10 +270,10 @@ const consolidatedReimbursementText = computed(() => {
   if (!accrual.value || accrual.value.groups.length === 0) return ''
   const firstGroup = accrual.value.groups[0]!
   // 收集所有门店的行
-  const allRows: { dept: string[], name: string, amount: number, feeType?: string }[] = []
+  const allRows: { dept: string[], name: string, amount: number, feeType?: string, unit?: string }[] = []
   for (const g of accrual.value.groups) {
     for (const row of g.rows) {
-      allRows.push({ dept: row.dept, name: row.name, amount: row.amount, feeType: row.feeType })
+      allRows.push({ dept: row.dept, name: row.name, amount: row.amount, feeType: row.feeType, unit: row.unit })
     }
   }
   // allocation 模式：用方案名称替代门店列表，避免多门店时文本过长

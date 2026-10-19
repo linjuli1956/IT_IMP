@@ -62,7 +62,7 @@
     />
 
     <!-- 模板明细编辑弹窗 -->
-    <el-dialog v-model="detailVisible" :title="detailReadonly ? '查看模板明细' : '编辑模板明细'" width="850px" @close="detailVisible = false">
+    <el-dialog v-model="detailVisible" :title="detailReadonly ? '查看模板明细' : '编辑模板明细'" width="960px" @close="detailVisible = false">
       <div class="detail-header">
         <el-tag size="default">{{ currentTemplate.carrier }}</el-tag>
         <span class="detail-store">{{ currentTemplate.store }}</span>
@@ -85,6 +85,11 @@
         <el-table-column label="名称/号码" min-width="180">
           <template #default="{ row }">
               <el-input v-model="row.name" size="small" :placeholder="currentTemplate.carrier === '中国电信' ? '填号码(如 DEMO_PHONE)' : '填费用类型(如宽带固话)'" :disabled="detailReadonly" />
+          </template>
+        </el-table-column>
+        <el-table-column label="单位" width="90">
+          <template #default="{ row }">
+            <el-input v-model="row.unit" size="small" placeholder="条/部/个" :disabled="detailReadonly" />
           </template>
         </el-table-column>
         <el-table-column label="预设费用" width="130">
@@ -154,6 +159,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, InfoFilled, View, Search } from '@element-plus/icons-vue'
+import { generateReimbursementText } from '~/utils/reimbursement'
 
 // 运营商选项
 const carrierOptions = [
@@ -232,94 +238,26 @@ const detailRows = ref<any[]>([])
 // 预览状态
 const showPreview = ref(false)
 
-// 预览文本（根据实际模板数据动态生成）
+// 预览文本（调用共享报销说明生成器，与真实计提生成保持一致，含单位解析）
 const previewText = computed(() => {
+  if (!currentTemplate.reimbursementFormat) return '请选择预设格式或自定义格式'
   const store = currentTemplate.store || '总部信息部'
-  const month = '2026年07月'
   const carrier = currentTemplate.carrier || '中国电信'
-
-  // 从实际模板行中计算
-  const totalAmount = detailRows.value.reduce((sum, row) => sum + (row.amount || 0), 0)
-  const amountStr = totalAmount.toFixed(2)
-
-  // 按部门分组统计（非号码行只在第一个承担部门下列出，避免重复）
-  const deptMap = new Map<string, { phoneCount: number, phoneAmount: number, nonPhoneItems: { name: string, amount: number }[], amount: number }>()
-  for (const row of detailRows.value) {
-    const depts = Array.isArray(row.dept) ? row.dept : [row.dept]
-    const isPhone = /^\d+$/.test(row.name)
-    // 号码行：每个承担部门都计入；非号码行：只计入第一个承担部门
-    const firstDept = depts.find((d: string) => d)
-    const targetDepts = isPhone ? depts : (firstDept ? [firstDept] : [])
-    for (const dept of targetDepts) {
-      if (!deptMap.has(dept)) {
-        deptMap.set(dept, { phoneCount: 0, phoneAmount: 0, nonPhoneItems: [], amount: 0 })
-      }
-      const d = deptMap.get(dept)!
-      if (isPhone) {
-        d.phoneCount++
-        d.phoneAmount += row.amount || 0
-      } else {
-        d.nonPhoneItems.push({ name: row.name, amount: row.amount || 0 })
-      }
-      d.amount += row.amount || 0
-    }
-  }
-
-  switch (currentTemplate.reimbursementFormat) {
-    case '分摊明细型': {
-      const allDepts = Array.from(deptMap.keys())
-      const deptListStr = allDepts.join('、')
-      const parts: string[] = []
-      for (const [dept, data] of deptMap) {
-        // 号码行
-        if (data.phoneCount > 0) {
-          parts.push(`${dept}承担 (${data.phoneCount} 个手机号码)：${data.phoneAmount.toFixed(2)} 元；`)
-        }
-        // 非号码行：逐项列出费用类型
-        for (const item of data.nonPhoneItems) {
-          parts.push(`${dept}承担${item.name}：${item.amount.toFixed(2)} 元；`)
-        }
-      }
-      return `${month}${carrier}${deptListStr}费用分摊明细：${parts.join('')}\n总计：${amountStr} 元；`
-    }
-    case '汇总简明型': {
-      // 统一格式：{年月}{运营商}{门店}费用，{费用类型}（含话费）：{金额}元
-      const feeTypes = detailRows.value
-        .map(row => row.name)
-        .filter(name => name && !/^\d+$/.test(name))
-      const feeTypeStr = feeTypes.length > 0 ? feeTypes.join('、') : '宽带固话'
-      return `${month}${carrier}${store}费用，${feeTypeStr}（含话费）：${amountStr}元`
-    }
-    case '年费描述型': {
-      // 统一格式：{年月}{运营商}{门店}使用{费用类型}（主用于办公、WiFi、收银等）年费：...
-      const feeType = detailRows.value
-        .map(row => row.name)
-        .find(name => name && !/^\d+$/.test(name)) || '宽带'
-      return `${month}${carrier}${store}使用${feeType}（主用于办公、WiFi、收银等）年费：${store}${feeType}1条，年费${amountStr}元；`
-    }
-    case '分项列举型': {
-      // 统一格式：{年月}{运营商}{各部门费用项}。合计：{金额}元
-      const items = detailRows.value.map(row => {
-        const depts = Array.isArray(row.dept) ? row.dept : [row.dept]
-        const deptStr = depts.join('')
-        return `${deptStr}${row.name}1条：${(row.amount || 0).toFixed(2)}元`
-      })
-      return `${month}${carrier}${items.join('，')}。合计：${amountStr}元`
-    }
-    case '自定义': {
-      let text = currentTemplate.reimbursementCustom || '请输入自定义格式'
-      text = text.replace(/\{门店\}/g, store)
-      text = text.replace(/\{年月\}/g, month)
-      text = text.replace(/\{运营商\}/g, carrier)
-      text = text.replace(/\{费用类型\}/g, '宽带固话')
-      text = text.replace(/\{金额\}/g, amountStr)
-      text = text.replace(/\{部门\}/g, Array.from(deptMap.keys()).join('、'))
-      text = text.replace(/\{号码数\}/g, String(Array.from(deptMap.values()).reduce((sum, d) => sum + d.phoneCount, 0)))
-      return text
-    }
-    default:
-      return '请选择预设格式或自定义格式'
-  }
+  const rows = detailRows.value.map((row: any) => ({
+    dept: Array.isArray(row.dept) ? row.dept : (row.dept ? [row.dept] : []),
+    name: row.name || '',
+    amount: Number(row.amount) || 0,
+    feeType: '',
+    unit: row.unit || '',
+  }))
+  return generateReimbursementText(
+    currentTemplate.reimbursementFormat,
+    currentTemplate.reimbursementCustom || '',
+    rows,
+    store,
+    '2026-07',
+    carrier,
+  )
 })
 
 function handleAdd() {
@@ -373,6 +311,7 @@ function addRow() {
     name: '',
     amount: 0,
     remark: '',
+    unit: '',
   })
 }
 

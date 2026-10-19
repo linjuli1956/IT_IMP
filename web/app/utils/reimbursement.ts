@@ -10,6 +10,22 @@ export interface ReimbursementRow {
   name: string
   amount: number
   feeType?: string
+  unit?: string
+}
+
+/**
+ * 解析费用项单位：显式单位优先，否则按「费用类型 + 名称」关键字回退。
+ * 固话→部、宽带/专线/线路/光纤→条、固定IP/手机/号码→个；无法识别返回空字符串（不带单位）。
+ */
+export function resolveItemUnit(name: string, unit?: string, feeType?: string): string {
+  const explicit = (unit || '').trim()
+  if (explicit) return explicit
+  const text = `${feeType || ''}${name || ''}`
+  if (/固话|电话/.test(text)) return '部'
+  if (/宽带|专线|线路|光纤/.test(text)) return '条'
+  if (/固定\s*IP|IP地址/i.test(text)) return '个'
+  if (/手机|号码|移动/.test(text)) return '个'
+  return ''
 }
 
 /**
@@ -121,7 +137,7 @@ export function generateReimbursementText(
           parts.push(`${dept}承担${data.mobileCount}个手机号码：${data.mobileAmount.toFixed(2)} 元；`)
         }
         if (data.landlineCount > 0) {
-          parts.push(`${dept}承担${data.landlineCount}个固话：${data.landlineAmount.toFixed(2)} 元；`)
+          parts.push(`${dept}承担${data.landlineCount}部固话：${data.landlineAmount.toFixed(2)} 元；`)
         }
         for (const item of data.nonPhoneItems) {
           if (Math.abs(item.amount) > 0.001) {
@@ -142,12 +158,17 @@ export function generateReimbursementText(
       const feeType = rows
         .map(row => row.name)
         .find(name => name && !/^[\d\-]+$/.test(name)) || '宽带'
-      return `${monthStr}${carrier}${store}使用${feeType}（主用于办公、WiFi、收银等）年费：${store}${feeType}1条，年费${amountStr}元；`
+      const feeRow = rows.find(row => row.name === feeType)
+      const unit = resolveItemUnit(feeType, feeRow?.unit, feeRow?.feeType)
+      const unitSuffix = unit ? `1${unit}` : ''
+      return `${monthStr}${carrier}${store}使用${feeType}（主用于办公、WiFi、收银等）年费：${store}${feeType}${unitSuffix}，年费${amountStr}元；`
     }
     case '分项列举型': {
       const items = rows.map(row => {
         const deptStr = row.dept.join('')
-        return `${deptStr}${row.name}1条：${row.amount.toFixed(2)}元`
+        const unit = resolveItemUnit(row.name, row.unit, row.feeType)
+        const unitSuffix = unit ? `1${unit}` : ''
+        return `${deptStr}${row.name}${unitSuffix}：${row.amount.toFixed(2)}元`
       })
       return `${monthStr}${carrier}${items.join('，')}。合计：${amountStr}元`
     }

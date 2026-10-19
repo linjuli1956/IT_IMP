@@ -10,6 +10,7 @@ export interface AccrualRow {
   remark: string        // 备注
   source: 'detail' | 'invoice' | 'calculated' | 'preset' | 'allocation' | 'manual'  // 费用来源
   feeType: string       // 费用类型（宽带/专线/固话/固定IP/其他，allocation模式使用）
+  unit?: string         // 单位（条/部/个/项，报销说明使用；模板行透传）
 }
 
 export interface AccrualGroup {

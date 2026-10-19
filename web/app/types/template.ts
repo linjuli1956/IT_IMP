@@ -5,6 +5,7 @@ export interface TemplateItem {
   name: string      // 名称/号码
   amount: number    // 预设费用（0表示需计算）
   remark: string    // 备注
+  unit?: string     // 单位（条/部/个/项，可空；报销说明使用）
 }
 
 export interface AccrualTemplate {

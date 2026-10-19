@@ -290,7 +290,7 @@
 import { ElMessage } from 'element-plus'
 import { generateReimbursementText } from '~/utils/reimbursement'
 import { getNextMonth, isValidMonth } from '~/utils/month'
-import { splitInvoiceAmount, buildDefaultInvoiceMapping, buildInvoiceRemark } from '~/utils/invoice-allocation'
+import { splitInvoiceAmount, buildDefaultInvoiceMapping } from '~/utils/invoice-allocation'
 
 const route = useRoute()
 const batchId = Number(route.params.id)
@@ -412,10 +412,10 @@ const groupRemaining = computed<number[]>(() => {
 const consolidatedReimbursementText = computed(() => {
   if (previewGroups.value.length === 0 || !batch.value) return ''
   const firstGroup = previewGroups.value[0]!
-  const allRows: { dept: string[], name: string, amount: number, feeType?: string }[] = []
+  const allRows: { dept: string[], name: string, amount: number, feeType?: string, unit?: string }[] = []
   for (const g of previewGroups.value) {
     for (const row of g.rows) {
-      allRows.push({ dept: row.dept, name: row.name, amount: row.amount, feeType: row.feeType })
+      allRows.push({ dept: row.dept, name: row.name, amount: row.amount, feeType: row.feeType, unit: row.unit })
     }
   }
   let storeLabel: string
@@ -681,6 +681,7 @@ function generatePreview() {
           amount,
           remark: item.remark,
           source: isPhone ? 'detail' : 'calculated',
+          unit: item.unit || '',
         })
       }
     } else {
@@ -710,15 +711,13 @@ function generatePreview() {
             const override = invoiceRowOverrides.value[store]?.[index]
             const amount = override != null ? override : Math.round(alloc.amount * 100) / 100
             allocationList.push({ rowIndex: index, amount, invoiceIds: alloc.invoiceIds })
-            const mappedInvoices = alloc.invoiceIds
-              .map(id => batch.value!.invoices.find(inv => inv.id === id))
-              .filter((inv): inv is NonNullable<typeof inv> => Boolean(inv))
             rows.push({
               dept: [...item.dept],
               name: item.name,
               amount,
-              remark: buildInvoiceRemark(item.remark || '', mappedInvoices),
+              remark: item.remark,
               source: 'invoice',
+              unit: item.unit || '',
               isInvoiceMapped: true,
               _store: store,
               _rowIndex: index,
@@ -730,6 +729,7 @@ function generatePreview() {
               amount: Number(item.amount) || 0,
               remark: item.remark,
               source: 'preset',
+              unit: item.unit || '',
             })
           }
         })
@@ -745,6 +745,7 @@ function generatePreview() {
               amount: Number(item.amount) || 0,
               remark: item.remark,
               source: 'preset',
+              unit: item.unit || '',
             })
           }
         } else {
@@ -756,6 +757,7 @@ function generatePreview() {
               amount: itemIdx === 0 ? invoiceAmount : 0,
               remark: item.remark,
               source: itemIdx === 0 ? 'invoice' : 'preset',
+              unit: item.unit || '',
             })
             itemIdx++
           }
@@ -841,6 +843,7 @@ function generateAllocationPreview() {
         remark: item.remark || '',
         source: effectiveAllocationMode === 'manual' ? 'manual' : 'allocation',
         feeType: item.feeType || '',
+        unit: item.unit || '',
         // 手动费用项的 key，用于在预览中显示输入框
         manualKey: effectiveAllocationMode === 'manual' ? `${item.name}::${alloc.store}` : '',
         isManual: effectiveAllocationMode === 'manual',
@@ -854,7 +857,7 @@ function generateAllocationPreview() {
     const reimbursementText = generateReimbursementText(
       selectedScheme.value!.reimbursementFormat || '',
       selectedScheme.value!.reimbursementCustom || '',
-      rows.map(r => ({ dept: r.dept, name: r.name, amount: r.amount, feeType: r.feeType })),
+      rows.map(r => ({ dept: r.dept, name: r.name, amount: r.amount, feeType: r.feeType, unit: r.unit })),
       store,
       batch.value.feeMonth,
       batch.value.carrier,

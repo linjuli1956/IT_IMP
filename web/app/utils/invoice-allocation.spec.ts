@@ -6,7 +6,6 @@ import { describe, it, expect } from 'vitest'
 import {
   splitInvoiceAmount,
   buildDefaultInvoiceMapping,
-  buildInvoiceRemark,
   invertInvoiceMapping,
   resolveStoreInvoiceAllocations,
   type InvoiceLike,
@@ -63,28 +62,6 @@ describe('buildDefaultInvoiceMapping', () => {
     expect(buildDefaultInvoiceMapping(four, 5).size).toBe(0)
     expect(buildDefaultInvoiceMapping([], 4).size).toBe(0)
     expect(buildDefaultInvoiceMapping(four, 0).size).toBe(0)
-  })
-})
-
-describe('buildInvoiceRemark', () => {
-  it('追加发票号与开票日期', () => {
-    const remark = buildInvoiceRemark('月租费', [
-      invoice(1, 100, { invoiceNumber: '01234567', invoiceDate: '2026-09-01' }),
-    ])
-    expect(remark).toBe('月租费（发票号 01234567 2026-09-01）')
-  })
-
-  it('多张发票用「；」连接', () => {
-    const remark = buildInvoiceRemark('', [
-      invoice(1, 100, { invoiceNumber: 'A1' }),
-      invoice(2, 200, { invoiceNumber: 'A2', invoiceDate: '2026-09-02' }),
-    ])
-    expect(remark).toBe('（发票号 A1；发票号 A2 2026-09-02）')
-  })
-
-  it('无发票号且无日期时返回原备注', () => {
-    expect(buildInvoiceRemark('月租费', [invoice(1, 100)])).toBe('月租费')
-    expect(buildInvoiceRemark('', [])).toBe('')
   })
 })
 

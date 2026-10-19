@@ -44,23 +44,6 @@ export function buildDefaultInvoiceMapping(invoices: InvoiceLike[], rowCount: nu
 }
 
 /**
- * 在模板备注后追加发票号/开票日期（无发票号且无日期时返回原备注）。
- * 多张发票用「；」连接。
- */
-export function buildInvoiceRemark(baseRemark: string, invoices: InvoiceLike[]): string {
-  const labels: string[] = []
-  for (const invoice of invoices) {
-    const parts: string[] = []
-    if (invoice.invoiceNumber) parts.push(`发票号 ${invoice.invoiceNumber}`)
-    if (invoice.invoiceDate) parts.push(invoice.invoiceDate)
-    if (parts.length > 0) labels.push(parts.join(' '))
-  }
-  if (labels.length === 0) return baseRemark || ''
-  const suffix = labels.join('；')
-  return baseRemark ? `${baseRemark}（${suffix}）` : `（${suffix}）`
-}
-
-/**
  * 把「发票 → 行」映射展开为「行索引 → 发票列表」，供生成时构造行金额/备注。
  */
 export function invertInvoiceMapping(mapping: Map<number, number[]>, invoices: InvoiceLike[]): Map<number, InvoiceLike[]> {

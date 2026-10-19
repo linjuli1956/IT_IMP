@@ -93,7 +93,7 @@ export default defineEventHandler(async (event: H3Event) => {
       g.reimbursementText = generateReimbursementText(
         g.reimbursementFormat || '',
         g.reimbursementCustom || '',
-        (g.rows || []).map((r: any) => ({ dept: r.dept, name: r.name, amount: r.amount, feeType: r.feeType })),
+        (g.rows || []).map((r: any) => ({ dept: r.dept, name: r.name, amount: r.amount, feeType: r.feeType, unit: r.unit })),
         g.store,
         reimbursementMonth,
         existing.carrier,
