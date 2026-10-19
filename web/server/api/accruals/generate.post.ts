@@ -2,13 +2,16 @@
  * 生成计提表 API
  * POST /api/accruals/generate
  * 请求头: Authorization: Bearer xxx (需管理员或操作员)
- * 请求体: { batchId, templateOverrides?, detailTableId?, schemeId?, manualAdjustments?, feeMonth? }
+ * 请求体: { batchId, templateOverrides?, detailTableId?, schemeId?, manualAdjustments?, feeMonth?, invoiceAllocations? }
  *   - batchId: 必填，发票批次ID
  *   - templateOverrides: 可选，{ [store: string]: number } 门店→模板ID映射
  *   - detailTableId: 可选，明细表ID（undefined=自动判断, 0=按发票, >0=按指定明细表）
  *   - schemeId: 可选，费用分摊方案ID（>0=按费用分摊模式生成）
  *   - manualAdjustments: 可选，{ [key]: number } 手动费用项金额映射
  *   - feeMonth: 可选，计提月份（YYYY-MM）；缺省 = 批次费用月的下个月
+ *   - invoiceAllocations: 可选，发票→明细行分配
+ *     { [store]: Array<{ rowIndex: number; amount: number; invoiceIds?: number[] }> }
+ *     未传时沿用原有规则（模板预设金额优先，否则发票总额进首行）
  *
  * 计提生成逻辑：
  * - 电信：按明细表生成（号码行匹配明细表取应收合计，非号码行倒推计算）
@@ -23,6 +26,10 @@ import { prisma } from '../../utils/prisma'
 import { requireRole, getClientIp } from '../../utils/auth'
 import { readBody, createError, type H3Event } from 'h3'
 import { resolveAccrualMonth } from '../../../app/utils/month'
+import {
+  resolveStoreInvoiceAllocations,
+  buildInvoiceRemark,
+} from '../../../app/utils/invoice-allocation'
 
 /** 将 Date 格式化为 YYYY-MM-DD HH:mm */
 function formatDate(date: Date): string {
@@ -103,7 +110,7 @@ function filterItemsByStore(items: any[], store: string): any[] {
 export default defineEventHandler(async (event: H3Event) => {
   const user = requireRole(event, '管理员', '操作员')
   const body = await readBody(event)
-  const { batchId, templateOverrides, detailTableId, schemeId, manualAdjustments, feeMonth } = body
+  const { batchId, templateOverrides, detailTableId, schemeId, manualAdjustments, feeMonth, invoiceAllocations } = body
 
   if (!batchId || isNaN(Number(batchId))) {
     throw createError({ statusCode: 400, message: '无效的批次ID' })
@@ -124,6 +131,14 @@ export default defineEventHandler(async (event: H3Event) => {
   if (!accrualMonth) {
     throw createError({ statusCode: 400, message: '计提月份格式无效（应为 YYYY-MM）' })
   }
+
+  // 发票列表（发票→明细行映射与行备注使用）
+  const invoiceLikeList = batch.invoices.map(inv => ({
+    id: inv.id,
+    amount: Number(inv.amount),
+    invoiceNumber: inv.invoiceNumber || '',
+    invoiceDate: inv.invoiceDate || '',
+  }))
 
   if (!batch.invoices || batch.invoices.length === 0) {
     throw createError({ statusCode: 400, message: '该批次没有发票，无法生成计提表' })
@@ -380,33 +395,61 @@ export default defineEventHandler(async (event: H3Event) => {
           })
         }
       } else {
-        // 按发票模式：优先使用模板预设金额，无预设金额才将发票总额填入第一项
-        const hasPresetAmounts = templateItems.some((item: any) => Number(item.amount) > 0)
-        if (hasPresetAmounts) {
-          for (const item of templateItems) {
+        // 按发票模式：优先使用「发票 → 明细行」映射；未映射行保留模板预设金额；
+        // 未传映射时沿用原有规则（预设金额优先，否则发票总额进首行）
+        const allocation = resolveStoreInvoiceAllocations(
+          invoiceAllocations,
+          store,
+          templateItems.length,
+          invoiceLikeList,
+        )
+        if (allocation.error) {
+          throw createError({ statusCode: 400, message: allocation.error })
+        }
+
+        if (allocation.rows.size > 0) {
+          templateItems.forEach((item: any, index: number) => {
+            const mapped = allocation.rows.get(index)
             rows.push({
               seq: 0,
               dept: [...(item.dept as string[])],
               name: item.name,
-              amount: Number(item.amount) || 0,
-              remark: item.remark || '',
-              source: 'preset',
+              amount: mapped ? mapped.amount : (Number(item.amount) || 0),
+              remark: mapped
+                ? buildInvoiceRemark(item.remark || '', mapped.invoices)
+                : (item.remark || ''),
+              source: mapped ? 'invoice' : 'preset',
               feeType: '',
             })
-          }
+          })
         } else {
-          let itemIdx = 0
-          for (const item of templateItems) {
-            rows.push({
-              seq: 0,
-              dept: [...(item.dept as string[])],
-              name: item.name,
-              amount: itemIdx === 0 ? invoiceAmount : 0,
-              remark: item.remark || '',
-              source: itemIdx === 0 ? 'invoice' : 'preset',
-              feeType: '',
-            })
-            itemIdx++
+          const hasPresetAmounts = templateItems.some((item: any) => Number(item.amount) > 0)
+          if (hasPresetAmounts) {
+            for (const item of templateItems) {
+              rows.push({
+                seq: 0,
+                dept: [...(item.dept as string[])],
+                name: item.name,
+                amount: Number(item.amount) || 0,
+                remark: item.remark || '',
+                source: 'preset',
+                feeType: '',
+              })
+            }
+          } else {
+            let itemIdx = 0
+            for (const item of templateItems) {
+              rows.push({
+                seq: 0,
+                dept: [...(item.dept as string[])],
+                name: item.name,
+                amount: itemIdx === 0 ? invoiceAmount : 0,
+                remark: item.remark || '',
+                source: itemIdx === 0 ? 'invoice' : 'preset',
+                feeType: '',
+              })
+              itemIdx++
+            }
           }
         }
       }

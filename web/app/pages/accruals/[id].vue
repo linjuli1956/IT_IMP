@@ -153,7 +153,9 @@
 <script setup lang="ts">
 import { CopyDocument, Printer, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import ExcelJS from 'exceljs'
 import { generateReimbursementText } from '~/utils/reimbursement'
+import { getAccrualExcelTitle, getAccrualExcelHeaders, buildAccrualExcelRows } from '~/utils/accrual-excel'
 import type { AccrualGroup } from '~/types/accrual'
 import PrintTemplateSelector from '~/components/common/PrintTemplateSelector.vue'
 
@@ -372,9 +374,67 @@ function handleTemplateCancel() {
   templateDialogVisible.value = false
 }
 
-// 下载Excel（静态原型阶段提示）
-function handleDownload() {
-  ElMessage.info('Excel下载功能将在后端开发阶段实现')
+// 下载 Excel：前端内存生成（不落盘，服务器不占空间），版式与打印一致
+async function handleDownload() {
+  if (!accrual.value) return
+  try {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('计提表')
+    const headers = getAccrualExcelHeaders(accrual.value)
+    const colCount = headers.length
+    const amountCol = headers.indexOf('费用(元)') + 1
+
+    // 标题行（合并居中）
+    worksheet.mergeCells(1, 1, 1, colCount)
+    const titleCell = worksheet.getCell(1, 1)
+    titleCell.value = getAccrualExcelTitle(accrual.value)
+    titleCell.font = { bold: true, size: 14 }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getRow(1).height = 26
+
+    // 列宽
+    headers.forEach((label, index) => {
+      const width = label === '序号' ? 8
+        : label === '承担部门' ? 22
+          : label === '名称/号码' ? 22
+            : label === '费用类型' ? 12
+              : label === '费用(元)' ? 14
+                : 26
+      worksheet.getColumn(index + 1).width = width
+    })
+
+    // 表头 + 数据行 + 小计 + 合计 + 制表人
+    for (const dataRow of buildAccrualExcelRows(accrual.value)) {
+      const excelRow = worksheet.addRow(dataRow.cells)
+      if (dataRow.kind === 'header') {
+        excelRow.font = { bold: true }
+        excelRow.alignment = { horizontal: 'center', vertical: 'middle' }
+      } else if (dataRow.kind === 'subtotal' || dataRow.kind === 'total') {
+        excelRow.font = { bold: true }
+      } else if (dataRow.kind === 'footer') {
+        excelRow.font = { color: { argb: 'FF909399' } }
+      }
+      if (dataRow.kind === 'data' || dataRow.kind === 'subtotal' || dataRow.kind === 'total') {
+        const amountCell = excelRow.getCell(amountCol)
+        amountCell.numFmt = '0.00'
+        amountCell.alignment = { horizontal: 'right' }
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `计提表_${accrual.value.batchNo}_${accrual.value.feeMonth}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    ElMessage.success('已导出 Excel')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导出失败')
+  }
 }
 </script>
 

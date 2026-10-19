@@ -67,8 +67,9 @@ async function fetchAccrualById(id: number): Promise<Accrual | null> {
 
 /**
  * 生成计提表（调服务端 API）
- * @param data { batchId, templateOverrides?, detailTableId?, schemeId?, manualAdjustments?, feeMonth? }
+ * @param data { batchId, templateOverrides?, detailTableId?, schemeId?, manualAdjustments?, feeMonth?, invoiceAllocations? }
  *   feeMonth: 计提月份（YYYY-MM），缺省由服务端按费用月次月生成
+ *   invoiceAllocations: 发票→明细行分配 { [store]: { rowIndex, amount, invoiceIds }[] }
  * @returns 生成的计提表，失败返回 null
  */
 async function generateAccrual(data: {
@@ -78,6 +79,7 @@ async function generateAccrual(data: {
   schemeId?: number
   manualAdjustments?: Record<string, number>
   feeMonth?: string
+  invoiceAllocations?: Record<string, { rowIndex: number; amount: number; invoiceIds: number[] }[]>
 }): Promise<Accrual | null> {
   try {
     const { post } = useApi()

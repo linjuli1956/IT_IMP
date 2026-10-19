@@ -126,6 +126,51 @@
         </template>
       </div>
 
+      <!-- 发票 → 计提明细行（仅按发票模式）：默认按顺序 1:1，可改成 1:N；改映射后下方预览实时更新 -->
+      <div v-if="generateMethod === 'invoice' && invoiceMappingGroups.length > 0" class="card">
+        <div class="section-header">
+          <span class="section-title">发票 → 计提明细行</span>
+          <el-tag type="info" size="small">默认按顺序 1:1，可更改；一张发票可对应多行（平均分摊，可在预览中微调）</el-tag>
+        </div>
+        <div v-for="group in invoiceMappingGroups" :key="group.store" class="invoice-map-group">
+          <div class="invoice-map-group-header">
+            <span class="invoice-map-store">{{ group.store }}</span>
+            <el-button size="small" text type="primary" @click="resetInvoiceMapping(group.store)">按顺序重置</el-button>
+          </div>
+          <el-table :data="group.invoices" border size="small" style="width: 100%">
+            <el-table-column label="发票号码" width="150">
+              <template #default="{ row }">{{ row.invoiceNumber || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="开票日期" width="110" align="center">
+              <template #default="{ row }">{{ row.invoiceDate || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="发票金额" width="120" align="right">
+              <template #default="{ row }">¥ {{ Number(row.amount).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="对应计提明细行（可多选）" min-width="260">
+              <template #default="{ row }">
+                <el-select
+                  :model-value="invoiceMapping[group.store]?.[row.id] ?? []"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择明细行"
+                  style="width: 100%"
+                  @update:model-value="(v) => setInvoiceRowMapping(group.store, row.id, v as number[])"
+                >
+                  <el-option
+                    v-for="(item, idx) in group.templateItems"
+                    :key="idx"
+                    :label="`${idx + 1}. ${item.name}`"
+                    :value="idx"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
       <!-- 按门店分组的计提预览 -->
       <div v-for="(group, idx) in previewGroups" :key="idx" class="card">
         <div class="section-header">
@@ -148,6 +193,15 @@
             </el-select>
             <el-tag type="info" size="small">发票金额：¥ {{ (generateMethod === 'allocation' ? batchTotalInvoice : group.invoiceAmount).toFixed(2) }}</el-tag>
             <el-tag type="primary" size="small">小计：¥ {{ group.subtotal.toFixed(2) }}</el-tag>
+            <el-tag
+              v-if="generateMethod === 'invoice' && hasInvoiceMapping"
+              :type="Math.abs(group.subtotal - group.invoiceAmount) > 0.005 ? 'danger' : 'success'"
+              size="small"
+            >
+              {{ Math.abs(group.subtotal - group.invoiceAmount) > 0.005
+                ? `分摊差额：¥ ${(group.subtotal - group.invoiceAmount).toFixed(2)}`
+                : '分摊与发票一致' }}
+            </el-tag>
             <el-tag v-if="generateMethod === 'allocation'" :type="(groupRemaining[idx] ?? 0) > 0.01 ? 'danger' : 'success'" size="small">
               待分摊：¥ {{ (groupRemaining[idx] ?? 0).toFixed(2) }}
             </el-tag>
@@ -172,7 +226,18 @@
           <el-table-column label="费用" width="160" align="right">
             <template #default="{ row }">
               <el-input-number
-                v-if="row.isManual"
+                v-if="row.isInvoiceMapped"
+                :model-value="invoiceRowOverrides[row._store]?.[row._rowIndex] ?? row.amount"
+                size="small"
+                :min="0"
+                :precision="2"
+                :step="0.01"
+                controls-position="right"
+                style="width: 130px"
+                @change="(v) => onInvoiceRowAmountChange(row._store, row._rowIndex, v as number | undefined)"
+              />
+              <el-input-number
+                v-else-if="row.isManual"
                 v-model="manualAdjustments[row.manualKey]"
                 size="small"
                 :min="0"
@@ -225,6 +290,7 @@
 import { ElMessage } from 'element-plus'
 import { generateReimbursementText } from '~/utils/reimbursement'
 import { getNextMonth, isValidMonth } from '~/utils/month'
+import { splitInvoiceAmount, buildDefaultInvoiceMapping, buildInvoiceRemark } from '~/utils/invoice-allocation'
 
 const route = useRoute()
 const batchId = Number(route.params.id)
@@ -291,6 +357,13 @@ const generating = ref(false)
 
 // 计提月份（默认费用月的下个月）
 const accrualMonth = ref('')
+
+// 发票 → 明细行映射（按门店：发票ID → 明细行索引数组）
+const invoiceMapping = ref<Record<string, Record<number, number[]>>>({})
+// 映射行金额手动覆盖（按门店：行索引 → 金额）
+const invoiceRowOverrides = ref<Record<string, Record<number, number>>>({})
+// 待提交的发票分配（按门店：行索引 + 金额 + 发票ID）
+const pendingInvoiceAllocations = ref<Record<string, { rowIndex: number; amount: number; invoiceIds: number[] }[]>>({})
 
 interface PreviewGroup {
   store: string
@@ -400,9 +473,106 @@ function getSourceType(source: string): 'primary' | 'success' | 'warning' | 'inf
   return map[source] || 'info'
 }
 
+// ============================================
+// 发票 → 计提明细行 映射（仅按发票模式）
+// ============================================
+
+interface InvoiceMappingGroup {
+  store: string
+  templateItems: any[]
+  invoices: any[]
+}
+
+// 生成页映射分组：门店 + 该门店模板明细行 + 该门店发票
+const invoiceMappingGroups = computed<InvoiceMappingGroup[]>(() => {
+  if (!batch.value || generateMethod.value !== 'invoice') return []
+  const storeSet = new Set<string>()
+  for (const invoice of batch.value.invoices) {
+    for (const store of (invoice.stores as string[]) || []) storeSet.add(store)
+  }
+  const groups: InvoiceMappingGroup[] = []
+  for (const store of storeSet) {
+    const template = findByCarrierStoreOrDept(batch.value.carrier, store)
+    if (!template) continue
+    const templateItems = filterItemsByStore(template.items || [], store)
+    const invoices = batch.value.invoices.filter(invoice => ((invoice.stores as string[]) || []).includes(store))
+    groups.push({ store, templateItems, invoices })
+  }
+  return groups
+})
+
+// 是否存在任何发票→行映射
+const hasInvoiceMapping = computed(() => {
+  for (const storeMapping of Object.values(invoiceMapping.value)) {
+    if (storeMapping && Object.keys(storeMapping).length > 0) return true
+  }
+  return false
+})
+
+// 初始化映射：发票数 = 明细行数时按顺序 1:1，否则留空（由用户手动选择）
+function initInvoiceMapping() {
+  const mapping: Record<string, Record<number, number[]>> = {}
+  for (const group of invoiceMappingGroups.value) {
+    const defaults = buildDefaultInvoiceMapping(
+      group.invoices.map(invoice => ({ id: invoice.id, amount: Number(invoice.amount) })),
+      group.templateItems.length,
+    )
+    const storeMap: Record<number, number[]> = {}
+    for (const [invoiceId, rowIndexes] of defaults) {
+      storeMap[invoiceId] = rowIndexes
+    }
+    mapping[group.store] = storeMap
+  }
+  invoiceMapping.value = mapping
+  invoiceRowOverrides.value = {}
+}
+
+// 修改某张发票对应的明细行（可多选）
+function setInvoiceRowMapping(store: string, invoiceId: number, rowIndexes: number[]) {
+  if (!invoiceMapping.value[store]) invoiceMapping.value[store] = {}
+  if (rowIndexes.length === 0) {
+    delete invoiceMapping.value[store][invoiceId]
+  } else {
+    invoiceMapping.value[store][invoiceId] = [...rowIndexes]
+  }
+  invoiceRowOverrides.value = {}
+  generatePreview()
+}
+
+// 某门店按顺序重置映射
+function resetInvoiceMapping(store: string) {
+  const group = invoiceMappingGroups.value.find(g => g.store === store)
+  if (!group) return
+  const defaults = buildDefaultInvoiceMapping(
+    group.invoices.map(invoice => ({ id: invoice.id, amount: Number(invoice.amount) })),
+    group.templateItems.length,
+  )
+  const storeMap: Record<number, number[]> = {}
+  for (const [invoiceId, rowIndexes] of defaults) {
+    storeMap[invoiceId] = rowIndexes
+  }
+  invoiceMapping.value[store] = storeMap
+  invoiceRowOverrides.value = {}
+  generatePreview()
+}
+
+// 映射行金额手动修改
+function onInvoiceRowAmountChange(store: string, row: number, value: number | undefined | null) {
+  if (!invoiceRowOverrides.value[store]) invoiceRowOverrides.value[store] = {}
+  if (value == null || !Number.isFinite(value)) {
+    delete invoiceRowOverrides.value[store][row]
+  } else {
+    invoiceRowOverrides.value[store][row] = Math.round(value * 100) / 100
+  }
+  generatePreview()
+}
+
 // 生成预览数据
 function generatePreview() {
   if (!batch.value) return
+
+  // 每次重算前清空待提交的发票分配（本次预览会重新生成）
+  pendingInvoiceAllocations.value = {}
 
   if (generateMethod.value === 'allocation') {
     generateAllocationPreview()
@@ -514,29 +684,81 @@ function generatePreview() {
         })
       }
     } else {
-      // 按发票模式：优先使用模板预设金额，无预设金额才将发票总额填入第一项
-      const hasPresetAmounts = templateItems.some((item: any) => Number(item.amount) > 0)
-      if (hasPresetAmounts) {
-        for (const item of templateItems) {
-          rows.push({
-            dept: [...item.dept],
-            name: item.name,
-            amount: Number(item.amount) || 0,
-            remark: item.remark,
-            source: 'preset',
-          })
-        }
+      // 按发票模式：优先按「发票 → 明细行」映射分摊；未映射行保留模板预设/0；无映射时沿用原有规则
+      const storeMapping = invoiceMapping.value[store] || {}
+      const rowAllocations = new Map<number, { amount: number; invoiceIds: number[] }>()
+      for (const [invoiceIdKey, rowIndexes] of Object.entries(storeMapping)) {
+        const invoiceId = Number(invoiceIdKey)
+        const invoice = batch.value.invoices.find(inv => inv.id === invoiceId)
+        if (!invoice || !Array.isArray(rowIndexes) || rowIndexes.length === 0) continue
+        // 多门店发票按门店均分（移动为单门店，分摊额即发票金额）
+        const storeShare = Number(invoice.amount) / (((invoice.stores as string[] | undefined)?.length) || 1)
+        const parts = splitInvoiceAmount(storeShare, rowIndexes.length)
+        rowIndexes.forEach((rowIndex, partIndex) => {
+          const acc = rowAllocations.get(rowIndex) || { amount: 0, invoiceIds: [] as number[] }
+          acc.amount += parts[partIndex] || 0
+          if (!acc.invoiceIds.includes(invoiceId)) acc.invoiceIds.push(invoiceId)
+          rowAllocations.set(rowIndex, acc)
+        })
+      }
+
+      if (rowAllocations.size > 0) {
+        const allocationList: { rowIndex: number; amount: number; invoiceIds: number[] }[] = []
+        templateItems.forEach((item: any, index: number) => {
+          const alloc = rowAllocations.get(index)
+          if (alloc) {
+            const override = invoiceRowOverrides.value[store]?.[index]
+            const amount = override != null ? override : Math.round(alloc.amount * 100) / 100
+            allocationList.push({ rowIndex: index, amount, invoiceIds: alloc.invoiceIds })
+            const mappedInvoices = alloc.invoiceIds
+              .map(id => batch.value!.invoices.find(inv => inv.id === id))
+              .filter((inv): inv is NonNullable<typeof inv> => Boolean(inv))
+            rows.push({
+              dept: [...item.dept],
+              name: item.name,
+              amount,
+              remark: buildInvoiceRemark(item.remark || '', mappedInvoices),
+              source: 'invoice',
+              isInvoiceMapped: true,
+              _store: store,
+              _rowIndex: index,
+            })
+          } else {
+            rows.push({
+              dept: [...item.dept],
+              name: item.name,
+              amount: Number(item.amount) || 0,
+              remark: item.remark,
+              source: 'preset',
+            })
+          }
+        })
+        pendingInvoiceAllocations.value[store] = allocationList
       } else {
-        let itemIdx = 0
-        for (const item of templateItems) {
-          rows.push({
-            dept: [...item.dept],
-            name: item.name,
-            amount: itemIdx === 0 ? invoiceAmount : 0,
-            remark: item.remark,
-            source: itemIdx === 0 ? 'invoice' : 'preset',
-          })
-          itemIdx++
+        // 无映射：沿用原有规则（预设金额优先，否则发票总额进首行）
+        const hasPresetAmounts = templateItems.some((item: any) => Number(item.amount) > 0)
+        if (hasPresetAmounts) {
+          for (const item of templateItems) {
+            rows.push({
+              dept: [...item.dept],
+              name: item.name,
+              amount: Number(item.amount) || 0,
+              remark: item.remark,
+              source: 'preset',
+            })
+          }
+        } else {
+          let itemIdx = 0
+          for (const item of templateItems) {
+            rows.push({
+              dept: [...item.dept],
+              name: item.name,
+              amount: itemIdx === 0 ? invoiceAmount : 0,
+              remark: item.remark,
+              source: itemIdx === 0 ? 'invoice' : 'preset',
+            })
+            itemIdx++
+          }
         }
       }
     }
@@ -669,6 +891,10 @@ function onMethodChange() {
     }
     onSchemeChange()
   } else {
+    // 切到发票模式时，若尚无映射则按顺序初始化
+    if (generateMethod.value === 'invoice' && !hasInvoiceMapping.value) {
+      initInvoiceMapping()
+    }
     generatePreview()
   }
 }
@@ -719,11 +945,19 @@ async function handleGenerate() {
       for (const g of previewGroups.value) {
         templateOverrides[g.store] = g.selectedTemplateId
       }
+      // 发票模式且存在「发票 → 明细行」映射时，随生成提交分配结果
+      const allocations: Record<string, { rowIndex: number; amount: number; invoiceIds: number[] }[]> = {}
+      if (generateMethod.value === 'invoice') {
+        for (const [store, list] of Object.entries(pendingInvoiceAllocations.value)) {
+          if (list.length > 0) allocations[store] = list
+        }
+      }
       result = await generateAccrual({
         batchId,
         templateOverrides,
         detailTableId: selectedDetailId.value ?? undefined,
         feeMonth: accrualMonth.value,
+        ...(Object.keys(allocations).length > 0 ? { invoiceAllocations: allocations } : {}),
       })
     }
 
@@ -775,6 +1009,10 @@ onMounted(async () => {
   } else {
     generateMethod.value = 'invoice'
     selectedDetailId.value = 0
+  }
+  // 发票模式：按顺序初始化「发票 → 明细行」映射（发票数=行数时 1:1）
+  if (generateMethod.value === 'invoice') {
+    initInvoiceMapping()
   }
   generatePreview()
 })
@@ -876,5 +1114,21 @@ onMounted(async () => {
   margin-left: var(--spacing-sm);
   font-size: var(--font-size-small);
   color: var(--text-regular);
+}
+
+.invoice-map-group {
+  margin-top: var(--spacing-btn-gap);
+}
+
+.invoice-map-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.invoice-map-store {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 </style>
